@@ -11,8 +11,12 @@
     "set-webhook": "node scripts/set-webhook.js"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0",
     "@twa-dev/sdk": "^7.0.0",
     "dotenv": "^16.4.7",
+    "fs": "^0.0.1-security",  
     "grammy": "^1.21.1",
     "mongoose": "^8.13.0",
     "next": "14.2.5",
@@ -20,7 +24,8 @@
     "react-dom": "^18"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/bs58": "^4.0.4",
+    "@types/node": "^20.17.28",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { log } from 'node:console';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = process.env.NEXT_PUBLIC_WEBAPP_URL 
@@ -18,6 +19,7 @@ if (!WEBHOOK_URL) {
 async function setWebhook() {
   try {
     console.log(`Setting webhook to: ${WEBHOOK_URL}`);
+    log( `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}`);
     
     const response = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}`

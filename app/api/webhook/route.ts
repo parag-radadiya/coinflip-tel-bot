@@ -14,7 +14,7 @@ if (!BOT_TOKEN) {
 // Create a bot instance
 const bot = new Bot(BOT_TOKEN);
 
-bot.init();
+await bot.init();
 
 // Handle the /start command
 bot.command('start', async (ctx) => {

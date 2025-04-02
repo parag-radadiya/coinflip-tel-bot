@@ -29,7 +29,21 @@ const WalletSchema: Schema = new Schema({
   balance: {
     sol: { type: Number, default: 0 },
     token: { type: Number, default: 0 },
-    usdt: { type: Number, default: 0 }
+    tokenBalance: { type: Number, default: 0 },
+    solBalance: { type: Number, default: 0 },
+    usdt: { type: Number, default: 0 },
+    usdtBalance: { type: Number, default: 0 },
+  },
+  // Store provably fair state per client seed, then per nonce
+  provablyFairState: {
+    type: Map, // Outer Map: Key = clientSeed (string)
+    of: {      // Value of outer Map is another Map
+      type: Map, // Inner Map: Key = nonce (string)
+      of: new Schema({ // Value of inner Map is the provably fair data object
+        serverSeed: { type: String, required: true },
+        serverSeedHash: { type: String, required: true },
+      }, { _id: false }) // Don't create separate _id for these sub-documents
+    }
   },
   transactions: [{
     type: { type: String, enum: ['deposit', 'withdrawal', 'bet', 'win', 'loss'], required: true },
