@@ -4,6 +4,8 @@ import {
   Transaction,
   sendAndConfirmTransaction,
   Keypair,
+  clusterApiUrl,
+  SendTransactionError, // Import SendTransactionError
 } from "@solana/web3.js";
 import {
   getOrCreateAssociatedTokenAccount,
@@ -16,18 +18,27 @@ import {
 } from "@solana/spl-token";
 import bs58 from "bs58";
 
+// Utility function for delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Initialize connection to Solana network
 // For production, use a more reliable endpoint
-const connection = new Connection("http://localhost:8899", "confirmed");
+const connection = new Connection(clusterApiUrl('devnet'), "confirmed");
+
+// devnet address are as belowed 
+// Devnet Admin Wallet Public Key: 8MVqCcGqb9zhAwPNcKGcwMD7AQPWLHFWybfgRze1tV8V (Funded with 2 SOL)
+// Devnet Admin Wallet Keypair File: devnet-admin-wallet.json
+// Devnet USDT-like Token Mint: DxmaJTq9UtcQEnnHRED6ZsXcp79gQY5XUV8USSSyiUfa (6 decimals)
+// Devnet Custom Token Mint: BNDvNxhxhcRay8s5WK7wtpCwF9wGQiuUVo9zioGMtuS
 
 // Token Mint Addresses (Replace with actual token addresses)
-const USDT_MINT = new PublicKey("8dj2Wr6fxvv7Fjyr3rUhRPBTeoWLDitoq7Jr1o2Jjv7s");
-const TOKEN_MINT = new PublicKey("4dQzuzC7f4dE2HT3zKRJAGaD4xkqMLYy2ioFA5fS3vgv");
+const USDT_MINT = new PublicKey("DxmaJTq9UtcQEnnHRED6ZsXcp79gQY5XUV8USSSyiUfa"); // Updated Devnet USDT-like
+const TOKEN_MINT = new PublicKey("BNDvNxhxhcRay8s5WK7wtpCwF9wGQiuUVo9zioGMtuS"); // Updated Devnet Custom Token
 
 // Define token decimals
-const USDT_DECIMALS = 6;  // USDT has 6 decimal places
-const TOKEN_DECIMALS = 9; // Custom token has 9 decimal places
-const SOL_DECIMALS = 9;   // SOL has 9 decimal places (lamports)
+export const USDT_DECIMALS = 6;  // USDT has 6 decimal places
+export const TOKEN_DECIMALS = 9; // Custom token has 9 decimal places
+export const SOL_DECIMALS = 9;   // SOL has 9 decimal places (lamports)
 
 // Import admin wallet from dedicated module
 const adminWallet = getUserKeypair(process.env.ADMIN_WALLET_PRIVATE_KEY as string);
@@ -206,9 +217,10 @@ export async function buyTokens(userPrivateKey: string, tokenAmount: number): Pr
     console.log('user.publicKey == ', user.publicKey);
     console.log('balance == ', balance);
 
-    if (balance < 1e7) {
-      throw new Error("User does not have enough Lamports.");
-    }
+    // Removed user lamport check - Admin will pay the fee.
+    // if (balance < 1e7) {
+    //   throw new Error("User does not have enough Lamports.");
+    // }
 
     // Get or create associated token accounts
     const userUSDTAccount = await getOrCreateAssociatedTokenAccount(
@@ -299,10 +311,13 @@ export async function buyTokens(userPrivateKey: string, tokenAmount: number): Pr
       )
     );
 
-    // Sign and send transaction
+    // Set the admin wallet as the fee payer
+    transaction.feePayer = adminWallet.publicKey;
+
+    // Sign and send transaction (Admin pays fee, both need to sign their respective transfers)
     await sendAndConfirmTransaction(connection, transaction, [
+      adminWallet, // Fee payer listed first (though feePayer property is definitive)
       user,
-      adminWallet,
     ]);
 
     console.log(
@@ -325,7 +340,11 @@ export async function buyTokens(userPrivateKey: string, tokenAmount: number): Pr
     
     return true;
   } catch (error) {
-    console.error("Error during buyTokens transaction:", error.message);
+    if (error instanceof Error) {
+      console.error("Error during buyTokens transaction:", error.message);
+    } else {
+      console.error("An unknown error occurred during buyTokens transaction:", error);
+    }
     throw error; // Re-throw the error so it can be caught by the caller
   }
 }
@@ -459,7 +478,11 @@ export async function sellTokens(userPrivateKey: string, tokenAmount: number): P
     
     return true;
   } catch (error) {
-    console.error("Error during sellTokens transaction:", error.message);
+    if (error instanceof Error) {
+      console.error("Error during sellTokens transaction:", error.message);
+    } else {
+      console.error("An unknown error occurred during sellTokens transaction:", error);
+    }
     throw error; // Re-throw the error so it can be caught by the caller
   }
 }
@@ -471,7 +494,11 @@ export async function mintUSDT(userPrivateKey: string, amount: number): Promise<
     await mintTokens(USDT_MINT, user, amount, USDT_DECIMALS);
     return true;
   } catch (error) {
-    console.error("Error minting USDT:", error.message);
+    if (error instanceof Error) {
+      console.error("Error minting USDT:", error.message);
+    } else {
+      console.error("An unknown error occurred while minting USDT:", error);
+    }
     throw error;
   }
 }
@@ -483,8 +510,23 @@ export async function mintCustomToken(userPrivateKey: string, amount: number): P
     await mintTokens(TOKEN_MINT, user, amount, TOKEN_DECIMALS);
     return true;
   } catch (error) {
-    console.error("Error minting custom token:", error.message);
-    throw error;
+    if (error instanceof Error) {
+      console.error("Error minting custom token:", error.message);
+    } else {
+      console.error("An unknown error occurred while minting custom token:", error);
+    }
+    // Check if it's a SendTransactionError to get logs
+    if (error instanceof SendTransactionError) {
+      console.error("SendTransactionError during token transfer:", error.message);
+      // Attempt to get logs, though they might be empty on simulation failure
+      const logs = error.logs; // Access the logs property
+      console.error("Transaction Logs:", logs);
+    } else if (error instanceof Error) {
+      console.error("Error during token transfer:", error.message);
+    } else {
+      console.error("An unknown error occurred during token transfer:", error);
+    }
+    throw error; // Re-throw the error
   }
 }
 
@@ -523,6 +565,9 @@ export async function transferTokens(
       TOKEN_MINT,
       toWallet.publicKey
     );
+
+    // Add a small delay to allow devnet state to potentially settle
+    await sleep(500); 
     
     // Convert user-friendly amount to on-chain amount with decimals
     const onChainAmount = toTokenAmount(amount, TOKEN_DECIMALS);
@@ -547,17 +592,19 @@ export async function transferTokens(
         TOKEN_PROGRAM_ID
       )
     );
+
+    // Set the admin wallet as the fee payer for all transfers
+    transaction.feePayer = adminWallet.publicKey;
     
     // Determine which wallets need to sign the transaction
-    let signers = [];
+    let signers = [adminWallet]; // Admin (as fee payer) must always sign
     
-    // If the sender is the casino (admin wallet), only admin needs to sign
-    if (fromPrivateKey === 'casino') {
-      signers.push(adminWallet);
-    } 
-    // If the sender is a user, they need to sign
-    else {
-      signers.push(fromWallet);
+    // If the sender is a user (not the casino), they must also sign to authorize the transfer
+    if (fromPrivateKey !== 'casino') {
+      // Ensure the user wallet is added only if it's different from the admin wallet
+      if (fromWallet.publicKey.toBase58() !== adminWallet.publicKey.toBase58()) {
+         signers.push(fromWallet);
+      }
     }
     
     // If the recipient is not the casino and not the same as the sender, they might need to sign too
@@ -570,15 +617,37 @@ export async function transferTokens(
     // Log the transaction details for debugging
     console.log(`Transferring ${amount} tokens (${onChainAmount} raw units) from ${fromWallet.publicKey.toBase58()} to ${toWallet.publicKey.toBase58()}`);
     console.log(`Number of signers: ${signers.length}`);
-    
-    // Send and confirm the transaction
-    const signature = await sendAndConfirmTransaction(connection, transaction, signers);
+    console.log(`Attempting transfer: From Balance (raw): ${fromTokenBalance}, Amount (raw): ${onChainAmount}`);
+
+    // Explicitly simulate the transaction first
+    console.log("Simulating transaction...");
+    const simulationResult = await connection.simulateTransaction(transaction, signers);
+    console.log("Simulation Result:", JSON.stringify(simulationResult, null, 2)); // Log full simulation result
+
+    if (simulationResult.value.err) {
+      console.error("Transaction simulation failed:", simulationResult.value.err);
+      console.error("Simulation Logs:", simulationResult.value.logs);
+      throw new Error(`Transaction simulation failed: ${simulationResult.value.err}. Logs: ${simulationResult.value.logs?.join('\n')}`);
+    } else {
+       console.log("Transaction simulation successful. Logs:", simulationResult.value.logs);
+    }
+
+    // If simulation passed, send and confirm the transaction
+    console.log("Sending and confirming transaction...");
+    const signature = await sendAndConfirmTransaction(connection, transaction, signers, {
+        skipPreflight: true, // Optional: Skip the automatic preflight simulation by sendAndConfirmTransaction as we already did it.
+        commitment: 'confirmed',
+    });
     console.log(`Transaction confirmed: ${signature}`);
-    
+
     console.log(`Successfully transferred ${amount} tokens from ${fromWallet.publicKey.toBase58()} to ${toWallet.publicKey.toBase58()}`);
     return true;
   } catch (error) {
-    console.error("Error during token transfer:", error.message);
+    if (error instanceof Error) {
+      console.error("Error during token transfer:", error.message);
+    } else {
+      console.error("An unknown error occurred during token transfer:", error);
+    }
     throw error;
   }
 }
@@ -594,7 +663,7 @@ export function generateWallet(): { publicKey: string; privateKey: string } {
 
 export async function airdropSol(publicKey: PublicKey, amount: number) {
   try {
-    const connection = new Connection('http://localhost:8899', 'confirmed');
+    const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
     const signature = await connection.requestAirdrop(
       publicKey,
       amount * 1e9 // Convert SOL to lamports

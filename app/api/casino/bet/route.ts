@@ -1,7 +1,7 @@
 import { connectToDatabase } from '@/lib/mongodb';
 import Wallet from '@/models/Wallet';
 import User from '@/models/User';
-import { transferTokens } from '@/utils/solanaTokens'; // Removed getUserKeypair as it wasn't used
+import { transferTokens, toTokenAmount, fromTokenAmount, TOKEN_DECIMALS } from '@/utils/solanaTokens'; // Import helpers
 import { getWalletPrivateKey } from '@/services/walletService';
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
@@ -91,13 +91,40 @@ export async function POST(req: Request) {
     const userPrivateKey = getWalletPrivateKey(userWallet);
     let newBalance = userWallet.balance.token;
     let transferSuccessful = false;
+    let payoutAmount = 0; // Initialize payout amount
+    let platformFee = 0; // Initialize platform fee
 
     try {
+      // Read platform fee percentage from environment variables, default to 0
+      const feePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || '0') / 100;
+
       if (won) {
-        await transferTokens(adminWalletIdentifier, userPrivateKey, betAmount);
-        newBalance += betAmount;
+        // Calculate fee on the raw token amount
+        const grossWinningsRaw = toTokenAmount(betAmount, TOKEN_DECIMALS);
+        const platformFeeRaw = Math.floor(grossWinningsRaw * feePercent); // Calculate fee on raw amount
+        const netWinningsRaw = grossWinningsRaw - platformFeeRaw;
+
+        // Convert back for logging and response
+        platformFee = fromTokenAmount(platformFeeRaw, TOKEN_DECIMALS);
+        payoutAmount = fromTokenAmount(netWinningsRaw, TOKEN_DECIMALS); // Net winnings for user
+
+        console.log(`User won. Gross Winnings: ${betAmount}, Platform Fee (${(feePercent * 100).toFixed(2)}%): ${platformFee}, Net Winnings: ${payoutAmount}`);
+        console.log(`Raw amounts - Gross: ${grossWinningsRaw}, Fee: ${platformFeeRaw}, Net: ${netWinningsRaw}`);
+
+        if (netWinningsRaw > 0) {
+            // Transfer the raw net winnings amount
+            await transferTokens(adminWalletIdentifier, userPrivateKey, payoutAmount); // transferTokens expects user-friendly amount
+        } else {
+            console.log(`Net winnings raw amount is zero or less after fee (${netWinningsRaw}), no payout transfer executed.`);
+        }
+        // Update balance with user-friendly net winnings
+        newBalance += payoutAmount;
       } else {
-        await transferTokens(userPrivateKey, adminWalletIdentifier, betAmount);
+        // User lost, transfer the original bet amount from user to admin
+        payoutAmount = 0; // No payout on loss
+        platformFee = 0; // No fee on loss
+        console.log(`User lost. Transferring bet amount: ${betAmount} from user to admin.`);
+        await transferTokens(userPrivateKey, adminWalletIdentifier, betAmount); // transferTokens expects user-friendly amount
         newBalance -= betAmount;
       }
       transferSuccessful = true;
@@ -125,6 +152,9 @@ export async function POST(req: Request) {
           won,
           newBalance,
           coinResult,
+          betAmount, // Add bet amount
+          payoutAmount, // Add payout amount (net winnings or 0)
+          platformFee, // Add platform fee (0 if lost)
           serverSeed, // Reveal the server seed used for THIS bet
           serverSeedHash, // The hash that was shown before THIS bet
           clientSeed: providedClientSeed,
