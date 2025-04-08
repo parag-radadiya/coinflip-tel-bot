@@ -37,40 +37,48 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4 md:p-6">
-      {isLoggedIn ? (
-        <MainContent isLoggedIn={isLoggedIn}>
-          <div className="max-w-2xl w-full text-center space-y-6">
-            <div className="space-y-4">
-              <h1 className="text-4xl font-bold text-gray-800 bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">
-                🚀 Welcome Back!
-              </h1>
-              <p className="text-lg text-gray-600">
-                Ready to continue your adventure?
-              </p>
+    <main className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+      <div className="mx-auto max-w-md">
+        {isLoggedIn ? (
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+            <h1 className="text-3xl font-bold text-white mb-6">🚀 Welcome Back!</h1>
+            <p className="text-gray-300 mb-8">Ready to continue your adventure?</p>
+            <div className="grid grid-cols-2 gap-4">
+              <Link
+                href="/casino"
+                className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-yellow-900 font-semibold py-3 px-6 rounded-lg transition-all"
+              >
+                Casino
+              </Link>
+              <Link
+                href="/wallet"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  const response = await fetch('/api/wallet', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ telegramId: userData?.id })
+                  });
+                  if (response.ok) {
+                    WebApp.showAlert('Wallet created successfully!');
+                    window.location.href = '/wallet';
+                  } else {
+                    WebApp.showAlert('Failed to create wallet');
+                  }
+                }}
+              >
+                Wallet
+              </Link>
             </div>
-            <Link
-              href="/casino"
-              className="inline-block px-8 py-3 text-lg font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200"
-            >
-              Start Playing →
-            </Link>
           </div>
-        </MainContent>
-      ) : (
-        <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6 space-y-6">
-          <div className="space-y-4">
-            <div className="text-center space-y-2">
-              <h1 className="text-3xl font-bold text-gray-800">
-                🔒 Telegram Login
-              </h1>
-              <p className="text-gray-500">
-                Open in Telegram to auto-login or create your account
-              </p>
-            </div>
+        ) : (
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+            <h1 className="text-3xl font-bold text-white mb-6">🔒 Telegram Login</h1>
+            <p className="text-gray-300 mb-8">Open in Telegram to auto-login or create your account</p>
             {userData && (
               <button
-                className="w-full py-3 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
                 onClick={async () => {
                   const response = await fetch('/api/register', {
                     method: 'POST',
@@ -89,8 +97,8 @@ export default function HomePage() {
               </button>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

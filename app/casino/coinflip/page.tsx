@@ -28,6 +28,7 @@ interface GameResult {
 export default function CoinFlipPage() {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [betAmount, setBetAmount] = useState<number>(1);
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [clientSeed, setClientSeed] = useState<string>('');
@@ -190,17 +191,22 @@ export default function CoinFlipPage() {
     const fetchData = async () => {
       if (WebApp.initDataUnsafe.user?.id) {
         const { id } = WebApp.initDataUnsafe.user;
+        setWalletLoading(true);
         try {
           const response = await fetch(`/api/wallet?telegramId=${id}`);
           if (response.ok) {
             const data = await response.json();
+          setWalletLoading(false);
              if (!data.balance || typeof data.balance.tokenBalance !== 'number') {
                  if (!data.balance) data.balance = {};
                  data.balance.tokenBalance = data.balance.token || 0;
              }
             setWalletData(data);
           } else { WebApp.showAlert(`Could not load wallet data (${response.status})`); }
-        } catch (error) { WebApp.showAlert('Error loading wallet data.'); }
+        } catch (error) {
+          setWalletLoading(false);
+          WebApp.showAlert('Error loading wallet data.');
+        }
         finally { setLoading(false); }
       } else { setLoading(false); }
     };
@@ -209,8 +215,38 @@ export default function CoinFlipPage() {
   }, []);
 
   // Loading UI
-  if (loading) {
-    return <div className="flex justify-center items-center min-h-screen bg-gray-900"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-yellow-400"></div></div>;
+  if (!walletData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+        <div className="mx-auto max-w-md">
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+            <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+            <p className="text-gray-300 mb-8">You need a wallet to play this game. Please create or connect a wallet first.</p>
+            <button
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+              onClick={() => window.location.href = '/wallet'}
+            >
+              Go to Wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading || walletLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4 md:p-6 pb-24">
+        <div className="mx-auto max-w-md">
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+            <div className="flex justify-center items-center py-16">
+              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-yellow-400"></div>
+            </div>
+            <p className="text-gray-300">Loading wallet data...</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Main Render

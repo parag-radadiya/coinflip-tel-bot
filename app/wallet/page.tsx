@@ -65,9 +65,10 @@ export default function WalletPage() {
             data.balance.usdtBalance = data.balance.usdt || 0;
           }
           setWalletData(data);
+        } else if (response.status === 404) {
+          setWalletData(null);
         } else {
           console.error('Failed to fetch wallet data');
-          WebApp.showAlert('Could not load wallet data');
         }
       } catch (error) {
         console.error('Error fetching wallet data:', error);
@@ -99,12 +100,10 @@ export default function WalletPage() {
           body: JSON.stringify({ telegramId: id })
         });
         if (response.ok) {
-          const data = await response.json();
-          setWalletData(data);
+          await fetchWalletData();
           WebApp.showAlert('Wallet created successfully!');
         } else {
-          console.error('Failed to create wallet');
-          WebApp.showAlert('Could not create wallet');
+          WebApp.showAlert('Failed to create wallet');
         }
       } catch (error) {
         console.error('Error creating wallet:', error);
@@ -112,6 +111,8 @@ export default function WalletPage() {
       } finally {
         setLoading(false);
       }
+    } else {
+      WebApp.showAlert('Could not create wallet');
     }
   };
 

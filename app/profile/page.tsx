@@ -66,15 +66,15 @@ export default function Home() {
 
   return (
     <MainContent isLoggedIn={true}>
-      <main className="min-h-screen bg-gray-50 p-4 md:p-6">
-        <div className="mx-auto max-w-2xl">
-          <div className="bg-white rounded-xl shadow-lg p-6 space-y-6">
-            <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
-              <h1 className="text-2xl font-bold text-gray-800 mb-4">👤 Profile Details</h1>
+      <main className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+        <div className="mx-auto max-w-md">
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 border border-gray-600">
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-4 border border-gray-600">
+              <h1 className="text-2xl font-bold text-white mb-4">👤 Profile Details</h1>
               <div className="space-y-3">
                 <p className="flex justify-between">
-                  <span className="font-medium text-gray-600">First Name:</span>
-                  <span className="text-gray-800">{userData.first_name}</span>
+                  <span className="font-medium text-gray-300">First Name:</span>
+                  <span className="text-white">{userData.first_name}</span>
                 </p>
                 {userData.last_name && (
                   <p className="flex justify-between">
@@ -89,12 +89,12 @@ export default function Home() {
                   </p>
                   )}
                 <p className="flex justify-between">
-                  <span className="font-medium text-gray-600">User ID:</span>
-                  <span className="text-gray-800">{userData.telegramId}</span>
+                  <span className="font-medium text-gray-300">User ID:</span>
+                  <span className="text-white">{userData.telegramId}</span>
                 </p>
                 <p className="flex justify-between">
-                  <span className="font-medium text-gray-600">Language:</span>
-                  <span className="text-gray-800">{userData.language_code}</span>
+                  <span className="font-medium text-gray-300">Language:</span>
+                  <span className="text-white">{userData.language_code}</span>
                 </p>
               </div>
             </div>

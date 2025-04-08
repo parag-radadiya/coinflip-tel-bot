@@ -4,24 +4,91 @@ import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 
 export default function MarketPage() {
-  const [buyAmount, setBuyAmount] = useState('');
-  const [sellAmount, setSellAmount] = useState('');
-  const [mintTokenAmount, setMintTokenAmount] = useState('');
-  const [mintUsdtAmount, setMintUsdtAmount] = useState('');
+  const [buyAmount, setBuyAmount] = useState<string>('');
+  const [sellAmount, setSellAmount] = useState<string>('');
+  const [mintTokenAmount, setMintTokenAmount] = useState<string>('');
+  const [mintUsdtAmount, setMintUsdtAmount] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [hasWallet, setHasWallet] = useState<boolean>(false);
 
   useEffect(() => {
     if (WebApp.initDataUnsafe.user) {
-      setUserId(String(WebApp.initDataUnsafe.user.id));
+      const userId = String(WebApp.initDataUnsafe.user.id);
+      setUserId(userId);
+      
+      // Check if user has wallet
+      fetch(`/api/wallet?telegramId=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          setHasWallet(data.success || data.publicKey);
+        })
+        .catch(() => {
+          setHasWallet(false);
+        });
     }
   }, []);
+
+  const createWallet = async () => {
+    if (WebApp.initDataUnsafe.user) {
+      const { id } = WebApp.initDataUnsafe.user;
+      try {
+        const response = await fetch('/api/wallet', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ telegramId: id })
+        });
+        if (response.ok) {
+          setHasWallet(true);
+        }
+      } catch (error) {
+        console.error('Error creating wallet:', error);
+      }
+    }
+  };
+
+  if (!hasWallet) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+        <div className="mx-auto max-w-md">
+          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+            <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+            <p className="text-gray-300 mb-8">You need a wallet to access the market features.</p>
+            <button
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+              onClick={createWallet}
+            >
+              Create Wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleBuyTokens = async () => {
     if (!userId) {
       console.error('User ID not found');
       return;
+    }
+    if (!hasWallet) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+          <div className="mx-auto max-w-md">
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+              <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+              <p className="text-gray-300 mb-8">You need a wallet to use the market features.</p>
+              <button
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                onClick={createWallet}
+              >
+                Create Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      );
     }
     try {
       const amount = parseFloat(buyAmount);
@@ -60,6 +127,24 @@ export default function MarketPage() {
       console.error('User ID not found');
       return;
     }
+    if (!hasWallet) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+          <div className="mx-auto max-w-md">
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+              <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+              <p className="text-gray-300 mb-8">You need a wallet to use the market features.</p>
+              <button
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                onClick={createWallet}
+              >
+                Create Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     try {
       const amount = parseFloat(sellAmount);
       if (isNaN(amount) || amount <= 0) {
@@ -96,6 +181,24 @@ export default function MarketPage() {
       console.error('User ID not found');
       setMessage('User ID not found');
       return;
+    }
+    if (!hasWallet) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+          <div className="mx-auto max-w-md">
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+              <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+              <p className="text-gray-300 mb-8">You need a wallet to use the market features.</p>
+              <button
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                onClick={createWallet}
+              >
+                Create Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      );
     }
     try {
       setIsLoading(true);
@@ -140,6 +243,24 @@ export default function MarketPage() {
       setMessage('User ID not found');
       return;
     }
+    if (!hasWallet) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+          <div className="mx-auto max-w-md">
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
+              <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
+              <p className="text-gray-300 mb-8">You need a wallet to use the market features.</p>
+              <button
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                onClick={createWallet}
+              >
+                Create Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     try {
       setIsLoading(true);
       setMessage(null);
@@ -178,22 +299,22 @@ export default function MarketPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
       <div className="mx-auto max-w-2xl">
-        <div className="bg-white rounded-xl shadow-lg p-6 space-y-6">
-          <h1 className="text-3xl font-bold text-gray-800">Market</h1>
+        <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 border border-gray-600">
+          <h1 className="text-3xl font-bold text-white">Market</h1>
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-700">Buy Tokens</h2>
+            <h2 className="text-xl font-semibold text-white">Buy Tokens</h2>
             <div className="flex items-center space-x-2">
               <input
                 type="number"
                 placeholder="Amount of USDT to spend"
-                className="border border-gray-300 rounded-md p-2 w-full"
+                className="bg-gray-600/50 border border-gray-500 text-white rounded-md p-2 w-full"
                 value={buyAmount}
                 onChange={(e) => setBuyAmount(e.target.value)}
               />
               <button
-                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-2 px-4 rounded transition-all"
                 onClick={handleBuyTokens}
               >
                 Buy
@@ -206,7 +327,7 @@ export default function MarketPage() {
               <input
                 type="number"
                 placeholder="Amount of Tokens to sell"
-                className="border border-gray-300 rounded-md p-2 w-full"
+                className="bg-gray-600/50 border border-gray-500 text-white rounded-md p-2 w-full"
                 value={sellAmount}
                 onChange={(e) => setSellAmount(e.target.value)}
               />
@@ -224,7 +345,7 @@ export default function MarketPage() {
               <input
                 type="number"
                 placeholder="Amount of Tokens to mint"
-                className="border border-gray-300 rounded-md p-2 w-full"
+                className="bg-gray-600/50 border border-gray-500 text-white rounded-md p-2 w-full"
                 value={mintTokenAmount}
                 onChange={(e) => setMintTokenAmount(e.target.value)}
               />
@@ -243,7 +364,7 @@ export default function MarketPage() {
               <input
                 type="number"
                 placeholder="Amount of USDT to mint"
-                className="border border-gray-300 rounded-md p-2 w-full"
+                className="bg-gray-600/50 border border-gray-500 text-white rounded-md p-2 w-full"
                 value={mintUsdtAmount}
                 onChange={(e) => setMintUsdtAmount(e.target.value)}
               />
