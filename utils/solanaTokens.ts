@@ -567,7 +567,7 @@ export async function transferTokens(
     );
 
     // Add a small delay to allow devnet state to potentially settle
-    await sleep(500); 
+    // await sleep(500); 
     
     // Convert user-friendly amount to on-chain amount with decimals
     const onChainAmount = toTokenAmount(amount, TOKEN_DECIMALS);
@@ -675,3 +675,14 @@ export async function airdropSol(publicKey: PublicKey, amount: number) {
     return false;
   }
 }
+
+
+// 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
+
+// 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
+
+// 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
+
+// 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
+
+// sk-2V5sg1WoSTmo0fk7WWqf/KUWRnFtvbIRycW90f8nnPJSYXlUEx6iOXNVn9Wh3+lGWq4oV2sDUx1+DTMZE4lipCqwK9nlRr8AUraVzKVrQA4=
