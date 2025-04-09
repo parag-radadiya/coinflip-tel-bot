@@ -13,12 +13,31 @@ if (!BOT_TOKEN) {
 
 // Create a bot instance
 const bot = new Bot(BOT_TOKEN);
+let isBotInitialized = false;
 
-await bot.init();
+// Function to initialize the bot (ensures it only runs once)
+async function initializeBot() {
+  if (!isBotInitialized) {
+    try {
+      console.log('Initializing bot...');
+      await bot.init();
+      isBotInitialized = true;
+      console.log('Bot initialized successfully.');
+    } catch (error) {
+      console.error('Failed to initialize bot:', error);
+      // Depending on the error, you might want to throw or handle it differently
+      throw new Error('Bot initialization failed'); 
+    }
+  }
+}
 
 // Handle the /start command
 bot.command('start', async (ctx) => {
   try {
+
+    console.log("process.env.NEXT_PUBLIC_WEBAPP_URL", process.env.NEXT_PUBLIC_WEBAPP_URL);
+
+
     // Create an inline keyboard with a button to open the Mini App
     const keyboard = new InlineKeyboard()
       .webApp(
@@ -75,6 +94,9 @@ bot.catch((err) => {
 // This is the webhook handler for Next.js API routes
 export async function POST(request: Request) {
   try {
+    // Ensure bot is initialized before handling updates
+    await initializeBot();
+
     // Get the update from the request body
     const update = await request.json();
     

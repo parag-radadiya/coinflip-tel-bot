@@ -4,6 +4,8 @@ import User from '@/models/User';
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
 // Helper function to generate and hash server seed
 const generateProvablyFairData = () => {
   const serverSeed = crypto.randomBytes(32).toString('hex');

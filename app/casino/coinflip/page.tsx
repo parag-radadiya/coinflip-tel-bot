@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react';
-import WebApp from '@twa-dev/sdk';
+import type { WebAppUser } from '@twa-dev/types'; // Import User type definition
 import { DocumentDuplicateIcon, ClipboardDocumentIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import crypto from 'crypto';
 
@@ -40,6 +40,10 @@ export default function CoinFlipPage() {
   const [animationClass, setAnimationClass] = useState<string>(''); // Holds current animation class
   const [userChoice, setUserChoice] = useState<'heads' | 'tails' | null>(null);
   const [showResultText, setShowResultText] = useState<boolean>(false); // Controls when to show result text
+  const [error, setError] = useState<string | null>(null);
+
+  const [webAppSdk, setWebAppSdk] = useState<any>(null); // Holds the loaded SDK
+  const [telegramUserId, setTelegramUserId] = useState<number | null>(null); // Holds user ID
 
   // Generate initial client seed
   useEffect(() => {
@@ -48,11 +52,14 @@ export default function CoinFlipPage() {
 
   // Fetch next server seed hash
   const fetchNextHash = useCallback(async () => {
-    if (!WebApp.initDataUnsafe.user?.id || !clientSeed) return;
+     if (!webAppSdk || !telegramUserId || !clientSeed) {
+       console.log("Cannot fetch hash: SDK, UserID or ClientSeed not ready.");
+       return;
+    }
     setHashLoading(true);
     setNextServerSeedHash(null);
     try {
-      const url = `/api/casino/next-hash?telegramId=${WebApp.initDataUnsafe.user.id}&clientSeed=${encodeURIComponent(clientSeed)}&nonce=${nonce}`;
+      const url = `/api/casino/next-hash?telegramId=${telegramUserId}&clientSeed=${encodeURIComponent(clientSeed)}&nonce=${nonce}`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -60,6 +67,7 @@ export default function CoinFlipPage() {
       } else {
         console.error('Failed to fetch next hash:', response.status, await response.text());
         setNextServerSeedHash('Error');
+        webAppSdk?.showAlert('Could not load next game hash.');
       }
     } catch (error) {
       console.error('Error fetching next hash:', error);
@@ -67,12 +75,31 @@ export default function CoinFlipPage() {
     } finally {
       setHashLoading(false);
     }
-  }, [clientSeed, nonce]);
+  }, [clientSeed, nonce, webAppSdk, telegramUserId]);
 
   // Fetch hash on load and changes
   useEffect(() => {
-    if (clientSeed) fetchNextHash();
-  }, [fetchNextHash, clientSeed]);
+    if (clientSeed && webAppSdk && telegramUserId) {
+        fetchNextHash();
+    }
+  }, [fetchNextHash, clientSeed, webAppSdk, telegramUserId]);
+
+  // Copy to clipboard (depends on SDK)
+  const copyToClipboard = useCallback((text: string | undefined) => {
+    if (!text) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          webAppSdk?.showAlert('Copied!'); // Use SDK state
+        })
+        .catch(err => {
+          console.error('Copy failed: ', err);
+          webAppSdk?.showAlert('Copy failed.'); // Use SDK state
+        });
+    } else {
+      webAppSdk?.showAlert('Clipboard not available.'); // Use SDK state
+    }
+  }, [webAppSdk]);
 
   // Render verification details
   const renderVerificationDetail = (label: string, value: string | undefined) => {
@@ -90,29 +117,34 @@ export default function CoinFlipPage() {
     );
   };
 
-  // Copy to clipboard
-  const copyToClipboard = useCallback((text: string | undefined) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text)
-      .then(() => WebApp.showAlert('Copied!'))
-      .catch(err => {
-        console.error('Copy failed: ', err);
-        WebApp.showAlert('Copy failed.');
-      });
-  }, []);
+  // // Copy to clipboard
+  // const copyToClipboard = useCallback((text: string | undefined) => {
+  //   if (!text) return;
+  //   navigator.clipboard.writeText(text)
+  //     .then(() => WebApp.showAlert('Copied!'))
+  //     .catch(err => {
+  //       console.error('Copy failed: ', err);
+  //       WebApp.showAlert('Copy failed.');
+  //     });
+  // }, []);
 
   // Handle Bet Submission
   const handleGame = async (choice: 'heads' | 'tails') => {
-    if (isBetting) return; // Prevent double clicks
+    if (!webAppSdk || !telegramUserId) {
+      console.error("Cannot bet: SDK or UserID not ready.");
+      if (webAppSdk) webAppSdk.showAlert('User information missing.');
+      return;
+  }
+    if (isBetting || isFlipping) return;
     if (!walletData || typeof walletData.balance.tokenBalance !== 'number') {
-      WebApp.showAlert('Wallet data not loaded yet.'); return;
+      webAppSdk.showAlert('Wallet data not loaded yet.'); return;
     }
     if (!betAmount || betAmount <= 0 || betAmount > walletData.balance.tokenBalance) {
-      WebApp.showAlert('Invalid bet amount or insufficient balance.'); return;
+      webAppSdk.showAlert('Invalid bet amount or insufficient balance.'); return;
     }
-    if (!clientSeed) { WebApp.showAlert('Client seed is missing.'); return; }
+    if (!clientSeed) { webAppSdk.showAlert('Client seed is missing.'); return; }
     if (hashLoading || !nextServerSeedHash || nextServerSeedHash === 'Error') {
-      WebApp.showAlert('Provably fair hash not ready. Please wait or refresh.'); return;
+      webAppSdk.showAlert('Provably fair hash not ready. Please wait or refresh.'); return;
     }
 
     // --- Start Bet ---
@@ -132,7 +164,7 @@ export default function CoinFlipPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          telegramId: WebApp.initDataUnsafe.user?.id, betAmount, choice, clientSeed, nonce
+          telegramId: telegramUserId, betAmount, choice, clientSeed, nonce
         })
       });
 
@@ -163,17 +195,21 @@ export default function CoinFlipPage() {
         }, 1000); // Match the animation duration in CSS
 
         setWalletData(prev => {
-            if (!prev) return null;
-            return { ...prev, balance: { ...prev.balance, tokenBalance: resultData.newBalance }};
-        });
-        setNonce(prevNonce => prevNonce + 1); // Triggers fetchNextHash via useEffect
+          if (!prev) return null;
+          const change = resultData.won ? betAmount : -betAmount;
+          return {
+              ...prev,
+              balance: { ...prev.balance, tokenBalance: prev.balance.tokenBalance + change }
+          };
+      });
+      setNonce(prevNonce => prevNonce + 1); // Triggers fetchNextHash via useEffect
 
       } else {
          setGameResult(null);
          setShowResultText(false);
          setAnimationClass(''); // Clear animation on error
          setIsFlipping(false); // Stop animation
-         WebApp.showAlert(`Bet failed: ${resultData.error || 'Unknown error'}`);
+         webAppSdk.showAlert(`Bet failed: ${resultData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Bet error:', error);
@@ -182,37 +218,67 @@ export default function CoinFlipPage() {
       setShowResultText(false);
       setAnimationClass(''); // Clear animation on error
       setIsFlipping(false); // Stop animation
-      WebApp.showAlert('Failed to process bet. Please try again.');
+      webAppSdk.showAlert('Failed to process bet. Please try again.');
     }
   };
 
-  // Fetch Initial Wallet Data
-  useEffect(() => {
-    const fetchData = async () => {
-      // Ensure this runs only on the client side where WebApp is available
-      if (typeof window !== 'undefined' && WebApp && WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
-        const { id } = WebApp.initDataUnsafe.user;
-        setWalletLoading(true);
-        try {
-          const response = await fetch(`/api/wallet?telegramId=${id}`);
-          if (response.ok) {
-            const data = await response.json();
-          setWalletLoading(false);
-             if (!data.balance || typeof data.balance.tokenBalance !== 'number') {
-                 if (!data.balance) data.balance = {};
-                 data.balance.tokenBalance = data.balance.token || 0;
-             }
-            setWalletData(data);
-          } else { WebApp.showAlert(`Could not load wallet data (${response.status})`); }
-        } catch (error) {
-          setWalletLoading(false);
-          WebApp.showAlert('Error loading wallet data.');
+   // Fetch Initial Data (Wallet) & Initialize SDK Dynamically
+   useEffect(() => {
+    if (typeof window === 'undefined') {
+        console.log("Skipping SDK/Wallet fetch on server.");
+        setLoading(false);
+        setError("Cannot initialize outside browser.");
+        return;
+    }
+
+    setLoading(true);
+
+    import('@twa-dev/sdk') // DYNAMIC IMPORT HERE
+      .then(SdkModule => {
+        const WebAppRuntime = SdkModule.default; // Assign to temp variable
+        setWebAppSdk(WebAppRuntime); // Store the SDK instance
+
+        WebAppRuntime.ready(); // Use the variable
+
+        if (WebAppRuntime.initDataUnsafe?.user) {
+          const userId = WebAppRuntime.initDataUnsafe.user.id;
+          setTelegramUserId(userId);
+
+          // Fetch Wallet Data using userId
+          fetch(`/api/wallet?telegramId=${userId}`)
+            .then(async response => {
+              if (response.ok) {
+                const data = await response.json();
+              setWalletLoading(false);
+                 if (!data.balance || typeof data.balance.tokenBalance !== 'number') {
+                     if (!data.balance) data.balance = {};
+                     data.balance.tokenBalance = data.balance.token || 0;
+                 }
+                setWalletData(data);
+              } else { 
+                webAppSdk.showAlert(`Could not load wallet data (${response.status})`); 
+              }
+             })
+            .catch(walletError => { 
+              setWalletLoading(false);
+              webAppSdk.showAlert('Error loading wallet data.');
+            })
+            .finally(() => { setLoading(false); });
+
+        } else {
+          console.log("Not running inside Telegram or WebApp data unavailable.");
+          setError("Please open within Telegram.");
+          setTelegramUserId(null);
+          setWalletData(null);
+          setLoading(false);
         }
-        finally { setLoading(false); }
-      } else { setLoading(false); }
-    };
-    WebApp.ready();
-    fetchData();
+      })
+      .catch(importError => {
+        console.error("Failed to load Telegram SDK:", importError);
+        setError("Failed to initialize Telegram features.");
+        setLoading(false);
+      });
+
   }, []);
 
   // Loading UI

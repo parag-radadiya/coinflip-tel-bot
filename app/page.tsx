@@ -1,6 +1,7 @@
 'use client'
 
-import WebApp from '@twa-dev/sdk';
+// Import type only, not the actual SDK
+import type { WebAppUser } from '@twa-dev/types';
 import { useEffect, useState } from 'react';
 import MainContent from '@/app/components/MainContent';
 import Link from 'next/link';
@@ -19,21 +20,48 @@ interface UserData {
 export default function HomePage() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [webAppSdk, setWebAppSdk] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (WebApp && WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
-      const { id } = WebApp.initDataUnsafe.user;
-      fetch(`/api/register?telegramId=${id}`)
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.exists) {
-            setUserData(WebApp.initDataUnsafe.user as UserData);
-            setIsLoggedIn(true);
-          } else {
-            setUserData(WebApp.initDataUnsafe.user as UserData);
-          }
-        });
+    // Skip SDK initialization on server-side
+    if (typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
     }
+
+    // Dynamically import the SDK on client-side only
+    import('@twa-dev/sdk')
+      .then(SdkModule => {
+        const WebApp = SdkModule.default;
+        setWebAppSdk(WebApp);
+        WebApp.ready();
+
+        if (WebApp.initDataUnsafe?.user) {
+          const { id } = WebApp.initDataUnsafe.user;
+          fetch(`/api/register?telegramId=${id}`)
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.exists) {
+                setUserData(WebApp.initDataUnsafe.user as UserData);
+                setIsLoggedIn(true);
+              } else {
+                setUserData(WebApp.initDataUnsafe.user as UserData);
+              }
+              setIsLoading(false);
+            })
+            .catch(error => {
+              console.error('Error fetching user data:', error);
+              setIsLoading(false);
+            });
+        } else {
+          setIsLoading(false);
+        }
+      })
+      .catch(error => {
+        console.error('Error loading WebApp SDK:', error);
+        setIsLoading(false);
+      });
   }, []);
 
   return (
@@ -61,10 +89,10 @@ export default function HomePage() {
                     body: JSON.stringify({ telegramId: userData?.id })
                   });
                   if (response.ok) {
-                    WebApp.showAlert('Wallet created successfully!');
+                    webAppSdk?.showAlert('Wallet created successfully!');
                     window.location.href = '/wallet';
                   } else {
-                    WebApp.showAlert('Failed to create wallet');
+                    webAppSdk?.showAlert('Failed to create wallet');
                   }
                 }}
               >

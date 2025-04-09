@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  output: 'export',
+  // output: 'export',
   env: {
     BOT_TOKEN: process.env.BOT_TOKEN,
     API_BASE_URL: process.env.API_BASE_URL,
