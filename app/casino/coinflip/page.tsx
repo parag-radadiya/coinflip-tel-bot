@@ -189,7 +189,8 @@ export default function CoinFlipPage() {
   // Fetch Initial Wallet Data
   useEffect(() => {
     const fetchData = async () => {
-      if (WebApp.initDataUnsafe.user?.id) {
+      // Ensure this runs only on the client side where WebApp is available
+      if (typeof window !== 'undefined' && WebApp && WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
         const { id } = WebApp.initDataUnsafe.user;
         setWalletLoading(true);
         try {
