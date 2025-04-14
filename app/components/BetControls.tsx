@@ -1,6 +1,9 @@
 'use client';
 
 import { FC, ChangeEvent } from 'react';
+// Import SVG icons as React Components using SVGR (webpack config needed)
+import HeadsIcon from '../casino/coinflip/HeadsIcon.svg';
+import TailsIcon from '../casino/coinflip/TailsIcon.svg';
 
 // Define the props for the BetControls component
 interface BetControlsProps {
@@ -53,21 +56,38 @@ const BetControls: FC<BetControlsProps> = ({
          <p className="text-xs text-gray-400 mt-1 text-right">Max: {maxBet.toLocaleString()}</p>
       </div>
 
-      {/* Bet Buttons */}
+      {/* Bet Buttons - New Style */}
       <div className="grid grid-cols-2 gap-4">
+        {/* Heads Button */}
         <button
           onClick={() => onBetSubmit('heads')}
           disabled={buttonsDisabled}
-          className="p-4 bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-900 rounded-lg font-bold text-lg hover:from-yellow-300 hover:to-yellow-500 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:text-gray-400"
+          className={`
+            flex flex-col items-center justify-center p-4 sm:p-6 rounded-lg
+            bg-blue-600 hover:bg-blue-700 text-white
+            transition-all duration-200 shadow-md hover:shadow-lg
+            disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none
+          `}
         >
-          HEADS
+          <HeadsIcon className="mb-2 sm:mb-3 h-10 w-10 sm:h-12 sm:w-12 text-yellow-400" /> {/* Render as component, adjust styling */}
+          <span className="font-semibold text-sm sm:text-base">BET HEAD</span>
+          <span className="text-xs sm:text-sm text-blue-200 mt-1">{betAmount.toFixed(8)}</span> {/* Adjust formatting as needed */}
         </button>
+
+        {/* Tails Button */}
         <button
           onClick={() => onBetSubmit('tails')}
           disabled={buttonsDisabled}
-          className="p-4 bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900 rounded-lg font-bold text-lg hover:from-gray-200 hover:to-gray-400 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:text-gray-400"
+           className={`
+            flex flex-col items-center justify-center p-4 sm:p-6 rounded-lg
+            bg-blue-600 hover:bg-blue-700 text-white
+            transition-all duration-200 shadow-md hover:shadow-lg
+            disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none
+          `}
         >
-          TAILS
+          <TailsIcon className="mb-2 sm:mb-3 h-10 w-10 sm:h-12 sm:w-12 text-slate-300" /> {/* Render as component, adjust styling */}
+          <span className="font-semibold text-sm sm:text-base">BET TAIL</span>
+          <span className="text-xs sm:text-sm text-blue-200 mt-1">{betAmount.toFixed(8)}</span> {/* Adjust formatting as needed */}
         </button>
       </div>
        {!isProvablyFairReady && !isDisabled && (

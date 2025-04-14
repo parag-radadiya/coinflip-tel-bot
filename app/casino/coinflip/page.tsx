@@ -8,7 +8,8 @@ import BalanceDisplay from '@/app/components/BalanceDisplay';
 import CoinDisplay from '@/app/components/CoinDisplay';
 import BetControls from '@/app/components/BetControls';
 import ProvablyFairDisplay from '@/app/components/ProvablyFairDisplay';
-import CoinFlipAnimation from '@/app/components/CoinFlipAnimation'; // Import the new component
+import CoinFlipAnimation from '@/app/components/CoinFlipAnimation';
+import GameRulesModal from '@/app/components/GameRulesModal'; // Import the modal component
 
 // --- Type Definitions ---
 
@@ -152,6 +153,8 @@ export default function CoinFlipPage() {
 
   // Game Lifecycle State (Reducer)
   const [gameState, dispatch] = useReducer(gameReducer, initialGameState);
+  const [gameHistory, setGameHistory] = useState<GameResult[]>([]); // State for game history
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false); // State for rules modal visibility
 
   // --- Effects ---
 
@@ -304,10 +307,18 @@ export default function CoinFlipPage() {
         if (!isMounted) return; // Don't update state if unmounted
 
         if (response.ok && 'won' in resultData) {
+           // Calculate payout for history
+           const payout = resultData.won ? betAmount : -betAmount;
+           const newResult: GameResult = { ...resultData, betAmount, payout };
+
            // Update wallet balance immediately based on server response
            setWalletData(prev => prev ? { ...prev, balance: { ...prev.balance, tokenBalance: resultData.newBalance } } : null);
-           // Dispatch success action
-           dispatch({ type: 'API_SUCCESS', payload: { result: resultData, betAmount } });
+
+           // Update game history state
+           setGameHistory(prevHistory => [...prevHistory, newResult]);
+
+           // Dispatch success action (pass the already constructed newResult)
+           dispatch({ type: 'API_SUCCESS', payload: { result: newResult, betAmount } }); // Pass the full GameResult
         } else {
           const errorMessage = ('error' in resultData ? resultData.error : null) || `Bet failed (${response.status})`;
           dispatch({ type: 'API_ERROR', payload: { error: errorMessage } });
@@ -414,7 +425,19 @@ export default function CoinFlipPage() {
 
         {/* Game Area Container */}
         <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-5 md:p-6 space-y-6 border border-gray-600">
-          <h2 className="text-2xl font-semibold text-center text-white mb-2">Coin Flip</h2>
+          {/* Title with Rules Button */}
+          <div className="flex justify-center items-center relative mb-2">
+            <h2 className="text-2xl font-semibold text-center text-white">Coin Flip</h2>
+            <button
+              onClick={() => setIsRulesModalOpen(true)}
+              className="absolute right-0 text-slate-400 hover:text-blue-400 transition-colors"
+              aria-label="Show game rules and limits"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          </div>
 
           {/* Display Coin Flip Animation */}
           <CoinFlipAnimation
@@ -422,6 +445,7 @@ export default function CoinFlipPage() {
             lastResult={gameState.lastResult} // Pass the whole lastResult, the child component will pick what it needs
             status={gameState.status}
             animationKey={nonce} // Use nonce to restart animation
+            gameHistory={gameHistory} // Pass game history down
           />
 
           {/* Display Bet Controls */}
@@ -456,6 +480,14 @@ export default function CoinFlipPage() {
         )}
 
       </div> {/* End Max Width Container */}
+
+      {/* Render the Game Rules Modal */}
+      <GameRulesModal
+        isOpen={isRulesModalOpen}
+        onClose={() => setIsRulesModalOpen(false)}
+        currentBalance={walletData.balance.tokenBalance} // Pass current balance
+      />
+
     </div> // End Page Container
   );
 }

@@ -59,14 +59,14 @@ export default function CasinoPage() {
                 const errorText = await res.text();
                 throw new Error(`Wallet check failed: ${res.status} ${errorText || ''}`);
               }
-              return res.json(); // Parse JSON if response is OK
-            })
-            .then(data => {
-              // Backend should return { success: true } if wallet exists
-              setHasWallet(data.success === true);
+              // If the response is OK (status 200-299), it means the wallet exists.
+              // We don't need to parse the JSON body here just to check existence.
+              setHasWallet(true); // Wallet exists
               setIsLoading(false); // Finished loading
             })
+            // No need for the .then(data => ...) block anymore for this check
             .catch(error => {
+              // Errors (including 404 Not Found) mean the wallet doesn't exist or there was another issue.
               console.error('Error checking wallet status:', error);
               setMessage(`Error checking wallet: ${error.message}`);
               setHasWallet(false); // Assume no wallet on error

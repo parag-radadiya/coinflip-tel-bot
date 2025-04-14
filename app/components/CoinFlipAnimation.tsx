@@ -1,10 +1,15 @@
 import React from 'react';
 
+// Define the structure for a single game result in the history
+interface GameHistoryEntry {
+  payout: number; // Positive for win, negative/zero for loss
+  // Add other relevant fields if needed, e.g., coinResult: 'heads' | 'tails';
+}
+
 // Define the structure for the last game result needed by this component
 interface LastResultData {
   coinResult: 'heads' | 'tails';
   payout: number | null; // Amount won or lost (null if not applicable)
-  // Add other relevant fields from GameResult if needed
 }
 
 // Define the props for the component
@@ -13,16 +18,45 @@ interface CoinFlipAnimationProps {
   lastResult: LastResultData | null; // Result of the last flip
   status: 'IDLE' | 'BETTING' | 'FLIPPING' | 'SHOWING_RESULT' | 'ERROR'; // Current game status
   animationKey: number; // Key to force re-render/restart animation
+  gameHistory: GameHistoryEntry[]; // Array of past game results
 }
 
 const CoinFlipAnimation: React.FC<CoinFlipAnimationProps> = ({
   animationClass,
   lastResult,
   status,
-  animationKey
+  animationKey,
+  gameHistory // Destructure the new prop
 }) => {
-  // TODO: Implement logic for series display if needed
-  const series = '-';
+
+  // Function to calculate the current win/loss streak
+  const calculateStreak = (history: GameHistoryEntry[]): string => {
+    if (!history || history.length === 0) {
+      return '-'; // No history, no streak
+    }
+
+    // Determine the outcome of the most recent game
+    const lastGame = history[history.length - 1];
+    // Consider payout > 0 as win, otherwise loss (payout <= 0)
+    const lastOutcome = lastGame.payout > 0 ? 'W' : 'L';
+    let streakCount = 0;
+
+    // Iterate backwards through history to count the streak
+    for (let i = history.length - 1; i >= 0; i--) {
+      const currentGameOutcome = history[i].payout > 0 ? 'W' : 'L';
+      if (currentGameOutcome === lastOutcome) {
+        streakCount++;
+      } else {
+        break; // Streak broken
+      }
+    }
+
+    // Return formatted streak string (e.g., W3, L2)
+    return `${lastOutcome}${streakCount}`;
+  };
+
+  // Calculate the series string using the history
+  const series = calculateStreak(gameHistory);
   // Use a placeholder or potentially derive from lastResult if available
   const multiplier = lastResult ? 'x1.9804' : 'x?.????'; // Example, adjust as needed
 
