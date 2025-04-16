@@ -2,8 +2,8 @@ import 'dotenv/config';
 import { log } from 'node:console';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const WEBHOOK_URL = process.env.NEXT_PUBLIC_WEBAPP_URL 
-  ? `${process.env.NEXT_PUBLIC_WEBAPP_URL}/api/webhook` 
+const WEBHOOK_URL = process.env.BASE_URL
+  ? `${process.env.BASE_URL}/api/webhook`
   : null;
 
 if (!BOT_TOKEN) {
@@ -12,7 +12,7 @@ if (!BOT_TOKEN) {
 }
 
 if (!WEBHOOK_URL) {
-  console.error('Error: NEXT_PUBLIC_WEBAPP_URL not found in .env file');
+  console.error('Error: BASE_URL not found in .env file or script failed to set it');
   process.exit(1);
 }
 

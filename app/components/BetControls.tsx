@@ -24,7 +24,7 @@ const BetControls: FC<BetControlsProps> = ({
   onBetSubmit,
   maxBet,
   isDisabled,
-  isProvablyFairReady
+  isProvablyFairReady 
 }) => {
 
   const handleAmountChange = (e: ChangeEvent<HTMLInputElement>) => {
