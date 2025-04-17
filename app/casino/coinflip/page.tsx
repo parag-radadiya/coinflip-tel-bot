@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback, useReducer } from 'react';
 import crypto from 'crypto'; // For client seed generation
 
+// Import Custom Hooks
+import { useTelegramWallet } from '@/hooks/useTelegramWallet'; // Import the wallet hook
+import { useProvablyFair } from '@/hooks/useProvablyFair'; // Import the provably fair hook
+
 // Import Child Components
 import BalanceDisplay from '@/app/components/BalanceDisplay';
 import CoinDisplay from '@/app/components/CoinDisplay';
@@ -13,20 +17,7 @@ import GameRulesModal from '@/app/components/GameRulesModal'; // Import the moda
 
 // --- Type Definitions ---
 
-// User data from SDK
-interface UserData {
-  id: number;
-}
-
-// Wallet data from API
-interface WalletData {
-  publicKey: string;
-  balance: {
-    tokenBalance: number;
-    solBalance: number; // Keep other balances if they exist
-    usdtBalance: number;
-  };
-}
+// Wallet data type is now implicitly handled by the useTelegramWallet hook or should be imported if needed elsewhere
 
 // Result data from the bet API
 interface BetApiResponse {
@@ -132,22 +123,24 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+// --- Constants ---
+const FLIP_ANIMATION_DURATION = 1000; // ms, adjust if CSS animation changes
+const RESULT_RESET_DELAY = 2000; // ms, time to show result before resetting
+
 // --- Main Component ---
 
 export default function CoinFlipPage() {
+  // --- Custom Hooks ---
+  const {
+    webAppSdk,
+    telegramUserId,
+    walletData,
+    isLoading: isInitialLoading, // Rename isLoading from hook
+    error: initialError,         // Rename error from hook
+    setWalletData                // Get the setter from the hook
+  } = useTelegramWallet();
+
   // --- State Hooks ---
-  const [webAppSdk, setWebAppSdk] = useState<any>(null);
-  const [telegramUserId, setTelegramUserId] = useState<number | null>(null);
-  const [walletData, setWalletData] = useState<WalletData | null>(null);
-  const [isInitialLoading, setIsInitialLoading] = useState(true); // For SDK and initial wallet load
-  const [initialError, setInitialError] = useState<string | null>(null); // Errors during init
-
-  // Provably Fair State
-  const [clientSeed, setClientSeed] = useState<string>('');
-  const [nonce, setNonce] = useState<number>(0);
-  const [nextServerSeedHash, setNextServerSeedHash] = useState<string | null>(null);
-  const [isHashLoading, setIsHashLoading] = useState<boolean>(false);
-
   // Bet Amount State
   const [betAmount, setBetAmount] = useState<number>(1);
 
@@ -156,108 +149,27 @@ export default function CoinFlipPage() {
   const [gameHistory, setGameHistory] = useState<GameResult[]>([]); // State for game history
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false); // State for rules modal visibility
 
+  // Determine if the game is in an active betting/flipping state (Declared AFTER gameState)
+  const isGameActive = gameState.status === 'BETTING' || gameState.status === 'FLIPPING';
+
+  // --- Custom Hooks ---
+  // Provably Fair Hook (Instantiated AFTER isGameActive is defined)
+  const {
+    clientSeed,
+    setClientSeed,
+    clientSeedError: pfClientSeedError, // Rename to avoid conflict
+    nonce,
+    setNonce,
+    nextServerSeedHash,
+    isHashLoading,
+    // fetchNextHash, // No longer needed directly in component
+    provablyFairError
+  } = useProvablyFair({ telegramUserId, webAppSdk, isGameActive });
+
+
   // --- Effects ---
 
-  // Generate initial client seed on mount
-  useEffect(() => {
-    try {
-        setClientSeed(crypto.randomBytes(16).toString('hex'));
-    } catch (e) {
-        console.error("Crypto error on initial seed generation:", e);
-        setInitialError("Failed to generate secure seed.");
-    }
-  }, []);
-
-  // Initialize SDK and Fetch Initial Wallet Data
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      setInitialError("Cannot initialize outside browser.");
-      setIsInitialLoading(false);
-      return;
-    }
-
-    setIsInitialLoading(true);
-    setInitialError(null);
-
-    import('@twa-dev/sdk')
-      .then(SdkModule => {
-        const WebAppRuntime = SdkModule.default;
-        setWebAppSdk(WebAppRuntime);
-        WebAppRuntime.ready();
-
-        if (WebAppRuntime.initDataUnsafe?.user) {
-          const userId = WebAppRuntime.initDataUnsafe.user.id;
-          setTelegramUserId(userId);
-
-          // Fetch Wallet Data
-          fetch(`/api/wallet?telegramId=${userId}`)
-            .then(async response => {
-              if (!response.ok) {
-                throw new Error(`Failed to load wallet (${response.status})`);
-              }
-              const data: WalletData = await response.json();
-              // Basic validation/normalization
-              if (!data.balance || typeof data.balance.tokenBalance !== 'number') {
-                 if (!data.balance) data.balance = { tokenBalance: 0, solBalance: 0, usdtBalance: 0 }; // Default structure
-                 data.balance.tokenBalance = data.balance.tokenBalance || 0; // Ensure tokenBalance exists
-              }
-              setWalletData(data);
-            })
-            .catch(walletError => {
-              console.error("Wallet fetch error:", walletError);
-              setInitialError(walletError.message || 'Error loading wallet data.');
-              setWalletData(null); // Ensure wallet data is null on error
-            })
-            .finally(() => {
-              setIsInitialLoading(false); // Wallet fetch attempt finished
-            });
-        } else {
-          setInitialError("Please open within Telegram.");
-          setTelegramUserId(null);
-          setWalletData(null);
-          setIsInitialLoading(false);
-        }
-      })
-      .catch(importError => {
-        console.error("Failed to load Telegram SDK:", importError);
-        setInitialError("Failed to initialize Telegram features.");
-        setIsInitialLoading(false);
-      });
-  }, []); // Run once on mount
-
-  // Fetch Next Server Seed Hash
-  const fetchNextHash = useCallback(async () => {
-    if (!webAppSdk || !telegramUserId || !clientSeed || gameState.status !== 'IDLE') {
-      // Don't fetch if prerequisites aren't met or game is in progress
-      return;
-    }
-    setIsHashLoading(true);
-    setNextServerSeedHash(null); // Clear previous hash
-    try {
-      const url = `/api/casino/next-hash?telegramId=${telegramUserId}&clientSeed=${encodeURIComponent(clientSeed)}&nonce=${nonce}`;
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        setNextServerSeedHash(data.serverSeedHash);
-      } else {
-        const errorText = await response.text();
-        console.error('Failed to fetch next hash:', response.status, errorText);
-        setNextServerSeedHash('Error'); // Indicate error state
-        webAppSdk?.showAlert(`Could not load next game hash: ${response.status}`);
-      }
-    } catch (error: any) {
-      console.error('Error fetching next hash:', error);
-      setNextServerSeedHash('Error');
-      webAppSdk?.showAlert(`Error fetching next hash: ${error.message}`);
-    } finally {
-      setIsHashLoading(false);
-    }
-  }, [clientSeed, nonce, webAppSdk, telegramUserId, gameState.status]); // Re-fetch when these change and game is idle
-
-  // Trigger fetchNextHash when dependencies are ready or change
-  useEffect(() => {
-    fetchNextHash();
-  }, [fetchNextHash]); // fetchNextHash has its own dependencies
+  // Client Seed generation and Hash fetching are now handled by useProvablyFair hook
 
   // --- Game Action Trigger ---
 
@@ -270,15 +182,16 @@ export default function CoinFlipPage() {
     if (betAmount <= 0 || betAmount > walletData.balance.tokenBalance) {
       webAppSdk?.showAlert('Invalid bet amount or insufficient balance.'); return;
     }
-    if (!clientSeed) { webAppSdk?.showAlert('Client seed is missing.'); return; }
-    if (isHashLoading || !nextServerSeedHash || nextServerSeedHash === 'Error') {
-      webAppSdk?.showAlert('Next game hash not ready. Please wait.'); return;
+    // Use values from useProvablyFair hook
+    if (!clientSeed || pfClientSeedError) { webAppSdk?.showAlert('Client seed is missing or invalid.'); return; }
+    if (isHashLoading || !nextServerSeedHash || nextServerSeedHash === 'Error' || provablyFairError) {
+      webAppSdk?.showAlert(provablyFairError || 'Next game hash not ready. Please wait.'); return;
     }
 
     // Dispatch action to start the betting process
     dispatch({ type: 'START_BET', payload: { choice } });
 
-  }, [gameState.status, walletData, betAmount, clientSeed, isHashLoading, nextServerSeedHash, webAppSdk]);
+  }, [gameState.status, walletData, betAmount, clientSeed, pfClientSeedError, isHashLoading, nextServerSeedHash, provablyFairError, webAppSdk]); // Updated dependencies
 
   // --- Effect to Handle API Call based on Game State ---
   useEffect(() => {
@@ -338,7 +251,7 @@ export default function CoinFlipPage() {
 
     return () => { isMounted = false; }; // Cleanup function
 
-  }, [gameState.status, gameState.userChoice, telegramUserId, betAmount, clientSeed, nonce, webAppSdk]); // Dependencies for the effect
+  }, [gameState.status, gameState.userChoice, telegramUserId, betAmount, clientSeed, nonce, webAppSdk, setWalletData]); // Dependencies use values from hooks
 
    // --- Effect to Handle Animation Timing ---
    useEffect(() => {
@@ -349,19 +262,20 @@ export default function CoinFlipPage() {
       // Set timeout to show result text after animation completes
       const timer = setTimeout(() => {
         dispatch({ type: 'SHOW_RESULT_TEXT' });
-      }, 1000); // Match animation duration (adjust if CSS changes)
+      }, FLIP_ANIMATION_DURATION); // Use constant for animation duration
 
       return () => clearTimeout(timer); // Cleanup timer
     } else if (gameState.status === 'SHOWING_RESULT') {
         // After showing result, set a timer to reset to IDLE for the next bet
         const resetTimer = setTimeout(() => {
             dispatch({ type: 'RESET_GAME' });
+            // Use setNonce from the useProvablyFair hook
             setNonce(prevNonce => prevNonce + 1); // Increment nonce for the *next* bet
-        }, 2000); // Wait 2 seconds before resetting to IDLE
+        }, RESULT_RESET_DELAY); // Use constant for reset delay
 
         return () => clearTimeout(resetTimer);
     }
-  }, [gameState.status, gameState.lastResult]); // Dependencies for animation timing
+  }, [gameState.status, gameState.lastResult, setNonce]); // Added setNonce dependency
 
 
   // --- Render Logic ---
@@ -378,12 +292,15 @@ export default function CoinFlipPage() {
     );
   }
 
-  if (initialError) {
+  // Combine initial errors from wallet hook and provably fair hook
+  const combinedInitialError = initialError || pfClientSeedError; // Use error from pf hook
+
+  if (combinedInitialError) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4 flex items-center justify-center">
         <div className="bg-red-800/50 border border-red-700 text-red-200 p-6 rounded-lg text-center max-w-md">
           <h2 className="text-xl font-semibold mb-2">Initialization Error</h2>
-          <p>{initialError}</p>
+          <p>{combinedInitialError}</p> {/* Display the combined error */}
           {/* Optionally add a button to retry or go back */}
         </div>
       </div>
@@ -411,8 +328,9 @@ export default function CoinFlipPage() {
   }
 
   // Main Game UI
-  const isGameDisabled = gameState.status === 'BETTING' || gameState.status === 'FLIPPING';
-  const isProvablyFairReady = !!nextServerSeedHash && nextServerSeedHash !== 'Error' && !isHashLoading;
+  const isGameDisabled = isGameActive; // Use the correctly placed variable
+  // Use values from useProvablyFair hook
+  const isProvablyFairReady = !!nextServerSeedHash && nextServerSeedHash !== 'Error' && !isHashLoading && !provablyFairError && !pfClientSeedError;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 font-sans pb-24">
@@ -444,7 +362,7 @@ export default function CoinFlipPage() {
             animationClass={gameState.animationClass}
             lastResult={gameState.lastResult} // Pass the whole lastResult, the child component will pick what it needs
             status={gameState.status}
-            animationKey={nonce} // Use nonce to restart animation
+            animationKey={nonce} // Use nonce from hook
             gameHistory={gameHistory} // Pass game history down
           />
 
@@ -455,29 +373,37 @@ export default function CoinFlipPage() {
             onBetSubmit={handleBetSubmit}
             maxBet={walletData.balance.tokenBalance}
             isDisabled={isGameDisabled}
-            isProvablyFairReady={isProvablyFairReady}
+            isProvablyFairReady={isProvablyFairReady} // Use calculated value
           />
 
         </div> {/* End Game Area Container */}
 
         {/* Display Provably Fair Section */}
         <ProvablyFairDisplay
-            clientSeed={clientSeed}
-            onClientSeedChange={setClientSeed}
-            nextServerSeedHash={nextServerSeedHash}
-            isNextHashLoading={isHashLoading}
-            nonce={nonce}
-            lastGameResult={gameState.lastResult} // Pass full last result for verification details
+            clientSeed={clientSeed} // from hook
+            onClientSeedChange={setClientSeed} // from hook
+            nextServerSeedHash={nextServerSeedHash} // from hook
+            isNextHashLoading={isHashLoading} // from hook
+            nonce={nonce} // from hook
+            lastGameResult={gameState.lastResult}
             isDisabled={isGameDisabled}
             webAppSdk={webAppSdk}
         />
 
-        {/* Display Game Error Messages */}
+        {/* Display Game Error Messages (from reducer) */}
         {gameState.status === 'ERROR' && gameState.error && (
             <div className="mt-4 bg-red-800/60 border border-red-700 text-red-200 p-3 rounded-lg text-center text-sm">
                 Error: {gameState.error}
             </div>
         )}
+
+        {/* Display Provably Fair Error Messages (from hook) */}
+        {provablyFairError && (
+           <div className="mt-4 bg-orange-800/60 border border-orange-700 text-orange-200 p-3 rounded-lg text-center text-sm">
+               Provably Fair System Error: {provablyFairError}
+           </div>
+        )}
+
 
       </div> {/* End Max Width Container */}
 

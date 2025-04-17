@@ -85,7 +85,7 @@ const CoinFlipAnimation: React.FC<CoinFlipAnimationProps> = ({
         {/* Center Section: Animated Coin */}
         <div key={animationKey} className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
           {/* Apply animation class here */}
-          <div className={`w-24 h-24 bg-gradient-to-br from-slate-300 to-slate-400 rounded-full flex items-center justify-center border-4 border-slate-500 shadow-xl ring-2 ring-slate-600/50 ${animationClass}`}>
+          <div className={`w-24 h-24 bg-gradient-to-br  from-slate-300 to-slate-400 rounded-full flex items-center justify-center border-4 border-slate-500 shadow-xl ring-2 ring-slate-600/50 ${animationClass}`}>
             {/* Display coin face - show only when not spinning fast */}
             {!isSpinning || animationClass.includes('flip') ? coinFace : null}
           </div>
