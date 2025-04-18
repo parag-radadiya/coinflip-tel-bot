@@ -1,6 +1,7 @@
 import { connectToDatabase } from '@/lib/mongodb';
 import Wallet from '@/models/Wallet';
 import User from '@/models/User';
+import GameHistory from '@/models/GameHistory'; // Import GameHistory model
 import { transferTokens, toTokenAmount, fromTokenAmount, TOKEN_DECIMALS } from '@/utils/solanaTokens'; // Import helpers
 import { getWalletPrivateKey } from '@/services/walletService';
 import { NextResponse } from 'next/server';
@@ -134,8 +135,51 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Token transfer failed: ${transferError.message || transferError}` }, { status: 500 });
     }
 
-    // Only update balance and PF state if transfer was successful
+    // Only update balance, PF state, user stats, and game history if transfer was successful
     if (transferSuccessful) {
+        // --- Record Game History and Update User Stats ---
+        const wagerAmountRaw = toTokenAmount(betAmount, TOKEN_DECIMALS);
+        // payoutAmount is the *net* amount transferred to/from user (already calculated)
+        const payoutAmountRaw = toTokenAmount(payoutAmount, TOKEN_DECIMALS);
+        // netChangeRaw reflects the actual change to user's balance in raw units
+        const netChangeRaw = won ? payoutAmountRaw : -wagerAmountRaw;
+
+        try {
+            // Create Game History entry
+            const gameHistoryEntry = new GameHistory({
+                userId: user._id,
+                gameType: 'coinflip',
+                wagerAmount: wagerAmountRaw,
+                choice: choice.toLowerCase(),
+                outcome: won ? 'win' : 'loss',
+                payoutAmount: netChangeRaw, // Store the net change
+                serverSeed: serverSeed,
+                clientSeed: providedClientSeed,
+                nonce: nonce,
+                resultingHash: resultHash,
+                timestamp: new Date()
+            });
+            await gameHistoryEntry.save();
+
+            // Update User stats
+            user.totalWagered += wagerAmountRaw;
+            if (won) {
+                user.totalWins += 1;
+            } else {
+                user.totalLosses += 1;
+            }
+            user.netProfit += netChangeRaw; // Add the net change (positive or negative)
+            await user.save();
+
+        } catch (dbError: any) {
+            console.error("Error saving game history or user stats:", dbError);
+            // Decide if this should be a fatal error for the bet response
+            // For now, log it and continue, but the bet itself succeeded.
+            // Consider returning a specific error or status if this is critical.
+        }
+        // --- End Recording ---
+
+
         // 3. Generate and store data for the NEXT nonce
         const nextNonce = nonce + 1;
         const nextNonceKey = nextNonce.toString();

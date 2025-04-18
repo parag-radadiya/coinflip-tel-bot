@@ -9,6 +9,11 @@ export interface IUser extends Document {
   isPremium?: boolean;
   lastVisited: Date;
   createdAt: Date;
+  // Game Statistics
+  totalWins: number;
+  totalLosses: number;
+  totalWagered: number; // Store in the smallest unit (e.g., lamports for SOL)
+  netProfit: number; // Store in the smallest unit (e.g., lamports for SOL)
 }
 
 const UserSchema: Schema = new Schema({
@@ -19,7 +24,12 @@ const UserSchema: Schema = new Schema({
   languageCode: { type: String, required: true },
   isPremium: { type: Boolean, default: false },
   lastVisited: { type: Date, default: Date.now },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  // Game Statistics
+  totalWins: { type: Number, default: 0 },
+  totalLosses: { type: Number, default: 0 },
+  totalWagered: { type: Number, default: 0 },
+  netProfit: { type: Number, default: 0 }
 });
 
 // Check if the model is already defined to prevent overwriting during hot reloads
