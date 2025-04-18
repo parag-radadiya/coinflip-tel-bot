@@ -1,0 +1,10 @@
+# Ignore artifacts:
+.next/
+node_modules/
+package-lock.json
+
+# Ignore specific config files if needed:
+# .env
+
+# Ignore generated files:
+# Add any other generated files here

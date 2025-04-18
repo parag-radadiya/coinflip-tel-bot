@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "set-webhook": "node scripts/set-webhook.js"
+    "set-webhook": "node scripts/set-webhook.js",
+    "start:dev": "./scripts/start-dev.sh",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -25,6 +27,7 @@
     "react-transition-group": "^4.4.5"
   },
   "devDependencies": {
+    "@svgr/webpack": "^8.1.0",
     "@types/bs58": "^4.0.4",
     "@types/node": "^20.17.28",
     "@types/react": "^18",

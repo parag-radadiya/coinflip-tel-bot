@@ -35,14 +35,14 @@ async function initializeBot() {
 bot.command('start', async (ctx) => {
   try {
 
-    console.log("process.env.NEXT_PUBLIC_WEBAPP_URL", process.env.NEXT_PUBLIC_WEBAPP_URL);
+    console.log("process.env.BASE_URL", process.env.BASE_URL);
 
 
     // Create an inline keyboard with a button to open the Mini App
     const keyboard = new InlineKeyboard()
       .webApp(
         'Play Game', // Button text
-        process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://your-deployed-app-url.com' // Mini App URL
+        process.env.BASE_URL || 'https://your-deployed-app-url.com' // Mini App URL
       );
 
     // Send a welcome message with the keyboard
