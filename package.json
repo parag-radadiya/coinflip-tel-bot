@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "set-webhook": "node scripts/set-webhook.js",
-    "start:dev": "./scripts/start-dev.sh"
+    "start:dev": "./scripts/start-dev.sh",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
