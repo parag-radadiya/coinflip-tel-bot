@@ -1,299 +1,325 @@
-'use client'
+'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import type { WebAppUser } from '@twa-dev/types'; // Import User type definition
-import { DocumentDuplicateIcon, ClipboardDocumentIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import crypto from 'crypto';
+import { useEffect, useState, useCallback, useReducer } from 'react';
+import crypto from 'crypto'; // For client seed generation
 
-interface WalletData {
-  publicKey: string;
-  balance: {
-    tokenBalance: number;
-    solBalance: number;
-    usdtBalance: number;
-  };
-}
+// Import Custom Hooks
+import { useTelegramWallet } from '@/hooks/useTelegramWallet'; // Import the wallet hook
+import { useProvablyFair } from '@/hooks/useProvablyFair'; // Import the provably fair hook
 
-interface GameResult {
+// Import Child Components
+import BalanceDisplay from '@/app/components/BalanceDisplay';
+import CoinDisplay from '@/app/components/CoinDisplay';
+import BetControls from '@/app/components/BetControls';
+import ProvablyFairDisplay from '@/app/components/ProvablyFairDisplay';
+import CoinFlipAnimation from '@/app/components/CoinFlipAnimation';
+import GameRulesModal from '@/app/components/GameRulesModal'; // Import the modal component
+
+// --- Type Definitions ---
+
+// Wallet data type is now implicitly handled by the useTelegramWallet hook or should be imported if needed elsewhere
+
+// Result data from the bet API
+interface BetApiResponse {
   won: boolean;
-  amount: number;
   coinResult: 'heads' | 'tails';
-  serverSeed?: string;
-  serverSeedHash?: string;
-  clientSeed?: string;
-  nonce?: number;
-  resultHash?: string;
+  serverSeed: string;
+  serverSeedHash: string; // Hash used for the bet
+  clientSeed: string;     // Client seed used for the bet
+  nonce: number;          // Nonce used for the bet
+  resultHash: string;     // Combined hash for verification
+  newBalance: number;     // Updated balance from the server
 }
+
+// Structure for storing game result details
+interface GameResult extends BetApiResponse {
+  betAmount: number; // Include the amount bet for display
+  payout: number;    // Include the amount won or lost
+}
+
+// --- Game State Management (useReducer) ---
+
+type GameStatus = 'IDLE' | 'BETTING' | 'FLIPPING' | 'SHOWING_RESULT' | 'ERROR';
+
+interface GameState {
+  status: GameStatus;
+  animationClass: string;
+  showResultText: boolean;
+  lastResult: GameResult | null; // Store the full result of the last game
+  error: string | null;
+  userChoice: 'heads' | 'tails' | null; // Store the user's choice during the bet
+}
+
+type GameAction =
+  | { type: 'START_BET'; payload: { choice: 'heads' | 'tails' } }
+  | { type: 'API_SUCCESS'; payload: { result: BetApiResponse; betAmount: number } }
+  | { type: 'API_ERROR'; payload: { error: string } }
+  | { type: 'START_FLIP_ANIMATION'; payload: { finalResult: 'heads' | 'tails' } }
+  | { type: 'SHOW_RESULT_TEXT' }
+  | { type: 'RESET_GAME' };
+
+const initialGameState: GameState = {
+  status: 'IDLE',
+  animationClass: '',
+  showResultText: false,
+  lastResult: null,
+  error: null,
+  userChoice: null,
+};
+
+function gameReducer(state: GameState, action: GameAction): GameState {
+  switch (action.type) {
+    case 'START_BET':
+      return {
+        ...initialGameState, // Reset most state
+        status: 'BETTING',
+        userChoice: action.payload.choice,
+        animationClass: 'animate-spin-continuous', // Start spinning
+      };
+    case 'API_SUCCESS': {
+      // API call finished, result received
+      const { result, betAmount } = action.payload;
+      // Calculate payout: win = +betAmount, lose = -betAmount
+      // TODO: Adjust if multiplier is introduced later
+      const payout = result.won ? betAmount : -betAmount;
+      return {
+        ...state,
+        status: 'FLIPPING', // Status indicates we are waiting for animation
+        lastResult: { ...result, betAmount, payout }, // Include calculated payout
+        error: null,
+        // Keep animationClass as 'animate-spin-continuous' until START_FLIP_ANIMATION
+      };
+    }
+    case 'START_FLIP_ANIMATION':
+      // Triggered after API success, sets the final animation
+       return {
+        ...state,
+        // status remains 'FLIPPING'
+        animationClass: `animate-flip-${action.payload.finalResult}`, // Set final flip animation
+      };
+    case 'SHOW_RESULT_TEXT':
+      // Animation finished
+      return {
+        ...state,
+        status: 'SHOWING_RESULT',
+        showResultText: true,
+        // animationClass remains showing the final state
+      };
+    case 'API_ERROR':
+      return {
+        ...initialGameState, // Reset state on error
+        status: 'ERROR',
+        error: action.payload.error,
+      };
+    case 'RESET_GAME':
+      // Reset for the next round, keeping last result for display if needed
+      return {
+        ...initialGameState,
+        status: 'IDLE',
+        lastResult: state.lastResult, // Keep last result visible until next bet starts
+      };
+    default:
+      return state;
+  }
+}
+
+// --- Constants ---
+const FLIP_ANIMATION_DURATION = 1000; // ms, adjust if CSS animation changes
+const RESULT_RESET_DELAY = 2000; // ms, time to show result before resetting
+
+// --- Main Component ---
 
 export default function CoinFlipPage() {
-  const [walletData, setWalletData] = useState<WalletData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [walletLoading, setWalletLoading] = useState(false);
+  // --- Custom Hooks ---
+  const {
+    webAppSdk,
+    telegramUserId,
+    walletData,
+    isLoading: isInitialLoading, // Rename isLoading from hook
+    error: initialError,         // Rename error from hook
+    setWalletData                // Get the setter from the hook
+  } = useTelegramWallet();
+
+  // --- State Hooks ---
+  // Bet Amount State
   const [betAmount, setBetAmount] = useState<number>(1);
-  const [gameResult, setGameResult] = useState<GameResult | null>(null);
-  const [clientSeed, setClientSeed] = useState<string>('');
-  const [nonce, setNonce] = useState<number>(0);
-  const [isBetting, setIsBetting] = useState<boolean>(false); // Tracks API call status
-  const [nextServerSeedHash, setNextServerSeedHash] = useState<string | null>(null);
-  const [hashLoading, setHashLoading] = useState<boolean>(false);
-  const [isFlipping, setIsFlipping] = useState<boolean>(false); // Tracks if *any* animation is running
-  const [animationClass, setAnimationClass] = useState<string>(''); // Holds current animation class
-  const [userChoice, setUserChoice] = useState<'heads' | 'tails' | null>(null);
-  const [showResultText, setShowResultText] = useState<boolean>(false); // Controls when to show result text
-  const [error, setError] = useState<string | null>(null);
 
-  const [webAppSdk, setWebAppSdk] = useState<any>(null); // Holds the loaded SDK
-  const [telegramUserId, setTelegramUserId] = useState<number | null>(null); // Holds user ID
+  // Game Lifecycle State (Reducer)
+  const [gameState, dispatch] = useReducer(gameReducer, initialGameState);
+  const [gameHistory, setGameHistory] = useState<GameResult[]>([]); // State for game history
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false); // State for rules modal visibility
 
-  // Generate initial client seed
+  // Determine if the game is in an active betting/flipping state (Declared AFTER gameState)
+  const isGameActive = gameState.status === 'BETTING' || gameState.status === 'FLIPPING';
+
+  // --- Custom Hooks ---
+  // Provably Fair Hook (Instantiated AFTER isGameActive is defined)
+  const {
+    clientSeed,
+    setClientSeed,
+    clientSeedError: pfClientSeedError, // Rename to avoid conflict
+    nonce,
+    setNonce,
+    nextServerSeedHash,
+    isHashLoading,
+    // fetchNextHash, // No longer needed directly in component
+    provablyFairError
+  } = useProvablyFair({ telegramUserId, webAppSdk, isGameActive });
+
+
+  // --- Effects ---
+
+  // Client Seed generation and Hash fetching are now handled by useProvablyFair hook
+
+  // --- Game Action Trigger ---
+
+  const handleBetSubmit = useCallback((choice: 'heads' | 'tails') => {
+    // Basic validation before dispatching
+    if (gameState.status !== 'IDLE' && gameState.status !== 'SHOWING_RESULT' && gameState.status !== 'ERROR') return; // Prevent betting if already in progress
+    if (!walletData || typeof walletData.balance.tokenBalance !== 'number') {
+      webAppSdk?.showAlert('Wallet data not loaded.'); return;
+    }
+    if (betAmount <= 0 || betAmount > walletData.balance.tokenBalance) {
+      webAppSdk?.showAlert('Invalid bet amount or insufficient balance.'); return;
+    }
+    // Use values from useProvablyFair hook
+    if (!clientSeed || pfClientSeedError) { webAppSdk?.showAlert('Client seed is missing or invalid.'); return; }
+    if (isHashLoading || !nextServerSeedHash || nextServerSeedHash === 'Error' || provablyFairError) {
+      webAppSdk?.showAlert(provablyFairError || 'Next game hash not ready. Please wait.'); return;
+    }
+
+    // Dispatch action to start the betting process
+    dispatch({ type: 'START_BET', payload: { choice } });
+
+  }, [gameState.status, walletData, betAmount, clientSeed, pfClientSeedError, isHashLoading, nextServerSeedHash, provablyFairError, webAppSdk]); // Updated dependencies
+
+  // --- Effect to Handle API Call based on Game State ---
   useEffect(() => {
-    setClientSeed(crypto.randomBytes(16).toString('hex'));
-  }, []);
-
-  // Fetch next server seed hash
-  const fetchNextHash = useCallback(async () => {
-     if (!webAppSdk || !telegramUserId || !clientSeed) {
-       console.log("Cannot fetch hash: SDK, UserID or ClientSeed not ready.");
-       return;
+    if (gameState.status !== 'BETTING' || !telegramUserId || !gameState.userChoice) {
+      return; // Only run when in 'BETTING' state with necessary data
     }
-    setHashLoading(true);
-    setNextServerSeedHash(null);
-    try {
-      const url = `/api/casino/next-hash?telegramId=${telegramUserId}&clientSeed=${encodeURIComponent(clientSeed)}&nonce=${nonce}`;
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        setNextServerSeedHash(data.serverSeedHash);
-      } else {
-        console.error('Failed to fetch next hash:', response.status, await response.text());
-        setNextServerSeedHash('Error');
-        webAppSdk?.showAlert('Could not load next game hash.');
-      }
-    } catch (error) {
-      console.error('Error fetching next hash:', error);
-      setNextServerSeedHash('Error');
-    } finally {
-      setHashLoading(false);
-    }
-  }, [clientSeed, nonce, webAppSdk, telegramUserId]);
 
-  // Fetch hash on load and changes
-  useEffect(() => {
-    if (clientSeed && webAppSdk && telegramUserId) {
-        fetchNextHash();
-    }
-  }, [fetchNextHash, clientSeed, webAppSdk, telegramUserId]);
+    let isMounted = true; // Prevent state updates if component unmounts during API call
 
-  // Copy to clipboard (depends on SDK)
-  const copyToClipboard = useCallback((text: string | undefined) => {
-    if (!text) return;
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text)
-        .then(() => {
-          webAppSdk?.showAlert('Copied!'); // Use SDK state
-        })
-        .catch(err => {
-          console.error('Copy failed: ', err);
-          webAppSdk?.showAlert('Copy failed.'); // Use SDK state
+    const performBet = async () => {
+      try {
+        const response = await fetch('/api/casino/bet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telegramId: telegramUserId,
+            betAmount,
+            choice: gameState.userChoice, // Use choice stored in state
+            clientSeed,
+            nonce
+          })
         });
-    } else {
-      webAppSdk?.showAlert('Clipboard not available.'); // Use SDK state
-    }
-  }, [webAppSdk]);
 
-  // Render verification details
-  const renderVerificationDetail = (label: string, value: string | undefined) => {
-    if (!value) return null;
+        const resultData: BetApiResponse | { error: string } = await response.json();
+
+        if (!isMounted) return; // Don't update state if unmounted
+
+        if (response.ok && 'won' in resultData) {
+           // Calculate payout for history
+           const payout = resultData.won ? betAmount : -betAmount;
+           const newResult: GameResult = { ...resultData, betAmount, payout };
+
+           // Update wallet balance immediately based on server response
+           setWalletData(prev => prev ? { ...prev, balance: { ...prev.balance, tokenBalance: resultData.newBalance } } : null);
+
+           // Update game history state
+           setGameHistory(prevHistory => [...prevHistory, newResult]);
+
+           // Dispatch success action (pass the already constructed newResult)
+           dispatch({ type: 'API_SUCCESS', payload: { result: newResult, betAmount } }); // Pass the full GameResult
+        } else {
+          const errorMessage = ('error' in resultData ? resultData.error : null) || `Bet failed (${response.status})`;
+          dispatch({ type: 'API_ERROR', payload: { error: errorMessage } });
+          webAppSdk?.showAlert(errorMessage);
+        }
+      } catch (error: any) {
+        console.error('Bet API error:', error);
+        if (isMounted) {
+          const errorMessage = error.message || 'Failed to process bet. Please try again.';
+          dispatch({ type: 'API_ERROR', payload: { error: errorMessage } });
+          webAppSdk?.showAlert(errorMessage);
+        }
+      }
+    };
+
+    performBet();
+
+    return () => { isMounted = false; }; // Cleanup function
+
+  }, [gameState.status, gameState.userChoice, telegramUserId, betAmount, clientSeed, nonce, webAppSdk, setWalletData]); // Dependencies use values from hooks
+
+   // --- Effect to Handle Animation Timing ---
+   useEffect(() => {
+    if (gameState.status === 'FLIPPING' && gameState.lastResult) {
+      // We received API result, now trigger the final flip animation
+      dispatch({ type: 'START_FLIP_ANIMATION', payload: { finalResult: gameState.lastResult.coinResult } });
+
+      // Set timeout to show result text after animation completes
+      const timer = setTimeout(() => {
+        dispatch({ type: 'SHOW_RESULT_TEXT' });
+      }, FLIP_ANIMATION_DURATION); // Use constant for animation duration
+
+      return () => clearTimeout(timer); // Cleanup timer
+    } else if (gameState.status === 'SHOWING_RESULT') {
+        // After showing result, set a timer to reset to IDLE for the next bet
+        const resetTimer = setTimeout(() => {
+            dispatch({ type: 'RESET_GAME' });
+            // Use setNonce from the useProvablyFair hook
+            setNonce(prevNonce => prevNonce + 1); // Increment nonce for the *next* bet
+        }, RESULT_RESET_DELAY); // Use constant for reset delay
+
+        return () => clearTimeout(resetTimer);
+    }
+  }, [gameState.status, gameState.lastResult, setNonce]); // Added setNonce dependency
+
+
+  // --- Render Logic ---
+
+  // Initial Loading or Error State
+  if (isInitialLoading) {
     return (
-      <div className="flex items-center justify-between text-xs break-all py-1">
-        <span className="font-medium mr-2 flex-shrink-0 text-gray-400">{label}:</span>
-        <div className="flex items-center space-x-1 bg-gray-700 px-2 py-1 rounded min-w-0">
-          <span className="truncate flex-1 font-mono text-gray-300" title={value}>{value}</span>
-          <button onClick={() => copyToClipboard(value)} className="p-1 hover:bg-gray-600 rounded flex-shrink-0" title={`Copy ${label}`}>
-            <ClipboardDocumentIcon className="h-4 w-4 text-gray-400" />
-          </button>
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-gray-300">Loading Game...</p>
         </div>
       </div>
     );
-  };
-
-  // // Copy to clipboard
-  // const copyToClipboard = useCallback((text: string | undefined) => {
-  //   if (!text) return;
-  //   navigator.clipboard.writeText(text)
-  //     .then(() => WebApp.showAlert('Copied!'))
-  //     .catch(err => {
-  //       console.error('Copy failed: ', err);
-  //       WebApp.showAlert('Copy failed.');
-  //     });
-  // }, []);
-
-  // Handle Bet Submission
-  const handleGame = async (choice: 'heads' | 'tails') => {
-    if (!webAppSdk || !telegramUserId) {
-      console.error("Cannot bet: SDK or UserID not ready.");
-      if (webAppSdk) webAppSdk.showAlert('User information missing.');
-      return;
   }
-    if (isBetting || isFlipping) return;
-    if (!walletData || typeof walletData.balance.tokenBalance !== 'number') {
-      webAppSdk.showAlert('Wallet data not loaded yet.'); return;
-    }
-    if (!betAmount || betAmount <= 0 || betAmount > walletData.balance.tokenBalance) {
-      webAppSdk.showAlert('Invalid bet amount or insufficient balance.'); return;
-    }
-    if (!clientSeed) { webAppSdk.showAlert('Client seed is missing.'); return; }
-    if (hashLoading || !nextServerSeedHash || nextServerSeedHash === 'Error') {
-      webAppSdk.showAlert('Provably fair hash not ready. Please wait or refresh.'); return;
-    }
 
-    // --- Start Bet ---
-    setIsBetting(true);
-    setGameResult(null);
-    setShowResultText(false);
-    setUserChoice(choice); // Store user's bet choice
-    setAnimationClass('animate-spin-continuous'); // Start continuous spinning animation
-    setIsFlipping(true); // Animation is now running
+  // Combine initial errors from wallet hook and provably fair hook
+  const combinedInitialError = initialError || pfClientSeedError; // Use error from pf hook
 
-    try {
-       // --- Simulate API delay for testing ---
-       // await new Promise(resolve => setTimeout(resolve, 1500));
-       // --- End Simulation ---
+  if (combinedInitialError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4 flex items-center justify-center">
+        <div className="bg-red-800/50 border border-red-700 text-red-200 p-6 rounded-lg text-center max-w-md">
+          <h2 className="text-xl font-semibold mb-2">Initialization Error</h2>
+          <p>{combinedInitialError}</p> {/* Display the combined error */}
+          {/* Optionally add a button to retry or go back */}
+        </div>
+      </div>
+    );
+  }
 
-      const response = await fetch('/api/casino/bet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegramId: telegramUserId, betAmount, choice, clientSeed, nonce
-        })
-      });
-
-      const resultData = await response.json();
-
-      // --- Stop continuous spinning animation ---
-      setIsBetting(false); // API call is complete
-
-      if (response.ok) {
-        // --- Set Result and final animation ---
-        const validatedResult = (resultData.coinResult === 'heads' || resultData.coinResult === 'tails')
-                                ? resultData.coinResult
-                                : 'tails'; // Default fallback
-
-        // Set the appropriate animation class based on the result
-        setAnimationClass(`animate-flip-${validatedResult}`); // This will end with the correct side up
-
-        setGameResult({
-          won: resultData.won, amount: betAmount, coinResult: validatedResult,
-          serverSeed: resultData.serverSeed, serverSeedHash: resultData.serverSeedHash,
-          clientSeed: resultData.clientSeed, nonce: resultData.nonce, resultHash: resultData.resultHash
-        });
-
-        // Wait for animation to complete before showing result text
-        setTimeout(() => {
-          setShowResultText(true);
-          setIsFlipping(false); // Animation is now complete
-        }, 1000); // Match the animation duration in CSS
-
-        setWalletData(prev => {
-          if (!prev) return null;
-          const change = resultData.won ? betAmount : -betAmount;
-          return {
-              ...prev,
-              balance: { ...prev.balance, tokenBalance: prev.balance.tokenBalance + change }
-          };
-      });
-      setNonce(prevNonce => prevNonce + 1); // Triggers fetchNextHash via useEffect
-
-      } else {
-         setGameResult(null);
-         setShowResultText(false);
-         setAnimationClass(''); // Clear animation on error
-         setIsFlipping(false); // Stop animation
-         webAppSdk.showAlert(`Bet failed: ${resultData.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Bet error:', error);
-      setIsBetting(false); // Ensure betting stops
-      setGameResult(null);
-      setShowResultText(false);
-      setAnimationClass(''); // Clear animation on error
-      setIsFlipping(false); // Stop animation
-      webAppSdk.showAlert('Failed to process bet. Please try again.');
-    }
-  };
-
-   // Fetch Initial Data (Wallet) & Initialize SDK Dynamically
-   useEffect(() => {
-    if (typeof window === 'undefined') {
-        console.log("Skipping SDK/Wallet fetch on server.");
-        setLoading(false);
-        setError("Cannot initialize outside browser.");
-        return;
-    }
-
-    setLoading(true);
-
-    import('@twa-dev/sdk') // DYNAMIC IMPORT HERE
-      .then(SdkModule => {
-        const WebAppRuntime = SdkModule.default; // Assign to temp variable
-        setWebAppSdk(WebAppRuntime); // Store the SDK instance
-
-        WebAppRuntime.ready(); // Use the variable
-
-        if (WebAppRuntime.initDataUnsafe?.user) {
-          const userId = WebAppRuntime.initDataUnsafe.user.id;
-          setTelegramUserId(userId);
-
-          // Fetch Wallet Data using userId
-          fetch(`/api/wallet?telegramId=${userId}`)
-            .then(async response => {
-              if (response.ok) {
-                const data = await response.json();
-              setWalletLoading(false);
-                 if (!data.balance || typeof data.balance.tokenBalance !== 'number') {
-                     if (!data.balance) data.balance = {};
-                     data.balance.tokenBalance = data.balance.token || 0;
-                 }
-                setWalletData(data);
-              } else { 
-                webAppSdk.showAlert(`Could not load wallet data (${response.status})`); 
-              }
-             })
-            .catch(walletError => { 
-              setWalletLoading(false);
-              webAppSdk.showAlert('Error loading wallet data.');
-            })
-            .finally(() => { setLoading(false); });
-
-        } else {
-          console.log("Not running inside Telegram or WebApp data unavailable.");
-          setError("Please open within Telegram.");
-          setTelegramUserId(null);
-          setWalletData(null);
-          setLoading(false);
-        }
-      })
-      .catch(importError => {
-        console.error("Failed to load Telegram SDK:", importError);
-        setError("Failed to initialize Telegram features.");
-        setLoading(false);
-      });
-
-  }, []);
-
-  // Loading UI
+  // Wallet Required State (if walletData is null after loading and no error)
   if (!walletData) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24">
+      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 pb-24 flex items-center justify-center">
         <div className="mx-auto max-w-md">
           <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
-            <h1 className="text-3xl font-bold text-white mb-6">Wallet Required</h1>
-            <p className="text-gray-300 mb-8">You need a wallet to play this game. Please create or connect a wallet first.</p>
+            <h1 className="text-2xl font-bold text-white mb-4">⚠️ Wallet Not Found</h1>
+            <p className="text-gray-300 mb-6">Could not load your wallet data. Please ensure you have created a wallet.</p>
             <button
               className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all"
-              onClick={() => window.location.href = '/wallet'}
+              onClick={() => window.location.href = '/wallet'} // Simple navigation
             >
-              Go to Wallet
+              Go to Wallet Page
             </button>
           </div>
         </div>
@@ -301,147 +327,93 @@ export default function CoinFlipPage() {
     );
   }
 
-  if (loading || walletLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4 md:p-6 pb-24">
-        <div className="mx-auto max-w-md">
-          <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-6 text-center border border-gray-600">
-            <div className="flex justify-center items-center py-16">
-              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-yellow-400"></div>
-            </div>
-            <p className="text-gray-300">Loading wallet data...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Main Game UI
+  const isGameDisabled = isGameActive; // Use the correctly placed variable
+  // Use values from useProvablyFair hook
+  const isProvablyFairReady = !!nextServerSeedHash && nextServerSeedHash !== 'Error' && !isHashLoading && !provablyFairError && !pfClientSeedError;
 
-  // Main Render
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-white p-4 md:p-6 font-sans pb-24">
       <div className="mx-auto max-w-md">
-        {/* Balance */}
-        <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-4 mb-6 text-center border border-gray-600">
-          <div className="text-sm text-gray-400 mb-1">Token Balance</div>
-          <div className="text-3xl font-bold text-yellow-400 tracking-wider">
-            {walletData?.balance ? walletData.balance.tokenBalance.toLocaleString() : '...'}
-          </div>
-        </div>
+        {/* Display Balance */}
+        <BalanceDisplay
+          balance={walletData.balance.tokenBalance}
+          isLoading={false} // Already handled initial loading
+        />
 
-        {/* Game Area */}
+        {/* Game Area Container */}
         <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-5 md:p-6 space-y-6 border border-gray-600">
-          <h2 className="text-2xl font-semibold text-center text-white mb-2">Coin Flip</h2>
+          {/* Title with Rules Button */}
+          <div className="flex justify-center items-center relative mb-2">
+            <h2 className="text-2xl font-semibold text-center text-white">Coin Flip</h2>
+            <button
+              onClick={() => setIsRulesModalOpen(true)}
+              className="absolute right-0 text-slate-400 hover:text-blue-400 transition-colors"
+              aria-label="Show game rules and limits"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          </div>
 
-          {/* Coin Animation Area */}
-          <div className="flex flex-col items-center justify-center min-h-[200px] md:min-h-[220px] space-y-4 bg-gray-800/40 rounded-lg p-4 border border-gray-600">
-            <div className="coin-container w-28 h-28 md:w-36 md:h-36">
-              <div
-                className={`coin ${animationClass}`}
-                key={nonce} // Force re-render for animation restart
-              >
-                <div className="coin-face coin-front bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-900 text-5xl md:text-6xl flex items-center justify-center">H</div>
-                <div className="coin-face coin-back bg-gradient-to-br from-gray-300 to-gray-500 text-gray-800 text-5xl md:text-6xl flex items-center justify-center">T</div>
-              </div>
+          {/* Display Coin Flip Animation */}
+          <CoinFlipAnimation
+            animationClass={gameState.animationClass}
+            lastResult={gameState.lastResult} // Pass the whole lastResult, the child component will pick what it needs
+            status={gameState.status}
+            animationKey={nonce} // Use nonce from hook
+            gameHistory={gameHistory} // Pass game history down
+          />
+
+          {/* Display Bet Controls */}
+          <BetControls
+            betAmount={betAmount}
+            onBetAmountChange={setBetAmount}
+            onBetSubmit={handleBetSubmit}
+            maxBet={walletData.balance.tokenBalance}
+            isDisabled={isGameDisabled}
+            isProvablyFairReady={isProvablyFairReady} // Use calculated value
+          />
+
+        </div> {/* End Game Area Container */}
+
+        {/* Display Provably Fair Section */}
+        <ProvablyFairDisplay
+            clientSeed={clientSeed} // from hook
+            onClientSeedChange={setClientSeed} // from hook
+            nextServerSeedHash={nextServerSeedHash} // from hook
+            isNextHashLoading={isHashLoading} // from hook
+            nonce={nonce} // from hook
+            lastGameResult={gameState.lastResult}
+            isDisabled={isGameDisabled}
+            webAppSdk={webAppSdk}
+        />
+
+        {/* Display Game Error Messages (from reducer) */}
+        {gameState.status === 'ERROR' && gameState.error && (
+            <div className="mt-4 bg-red-800/60 border border-red-700 text-red-200 p-3 rounded-lg text-center text-sm">
+                Error: {gameState.error}
             </div>
+        )}
 
-            {/* Result Text (shown after final flip animation finishes) */}
-            {/* Use opacity transition for smoother appearance */}
-            <div className={`text-center space-y-1 h-14 transition-opacity duration-300 ${showResultText && gameResult ? 'opacity-100' : 'opacity-0'}`}>
-              {gameResult && ( // Render content only when result is available
-                <>
-                  <p className={`text-xl font-bold ${gameResult.won ? 'text-green-400' : 'text-red-400'}`}>
-                    {gameResult.won ? `+${gameResult.amount.toLocaleString()}` : `-${gameResult.amount.toLocaleString()}`} Tokens!
-                  </p>
-                  <p className="text-sm text-gray-300">
-                    Landed on <span className="font-semibold capitalize">{gameResult.coinResult}</span>
-                  </p>
-                </>
-              )}
-            </div>
-             {/* Placeholder Text (shown when idle) */}
-             {!isFlipping && !gameResult && (
-                 <p className="text-gray-400 text-sm h-14 flex items-center justify-center">
-                     Place your bet!
-                 </p>
-             )}
-             {/* Removed "Flipping..." text */}
-          </div>
+        {/* Display Provably Fair Error Messages (from hook) */}
+        {provablyFairError && (
+           <div className="mt-4 bg-orange-800/60 border border-orange-700 text-orange-200 p-3 rounded-lg text-center text-sm">
+               Provably Fair System Error: {provablyFairError}
+           </div>
+        )}
 
-          {/* Next Hash Display */}
-          <div className="bg-gray-700 p-3 rounded-lg mb-5 border border-gray-600">
-              <div className="flex justify-between items-center mb-1">
-                  <span className="font-medium text-gray-400 text-xs">Next Bet Server Hash</span>
-                  <span className="text-gray-500 text-xs">Nonce: {nonce}</span>
-              </div>
-              {hashLoading ? ( <div className="h-5 bg-gray-600 rounded animate-pulse w-3/4"></div> ) : (
-                  <div className="flex items-center space-x-2">
-                     <span className="text-gray-200 break-all font-mono text-xs flex-1 truncate" title={nextServerSeedHash || 'N/A'}>{nextServerSeedHash || 'N/A'}</span>
-                     <button onClick={() => copyToClipboard(nextServerSeedHash || undefined)} className="p-1 hover:bg-gray-600 rounded flex-shrink-0" title="Copy Next Hash" disabled={!nextServerSeedHash || nextServerSeedHash === 'Error'}>
-                         <ClipboardDocumentIcon className="h-4 w-4 text-gray-400" />
-                     </button>
-                  </div>
-              )}
-          </div>
 
-          {/* Bet Controls */}
-          <div className="space-y-5">
-             <div>
-                <label htmlFor="betAmount" className="block text-sm font-medium text-gray-300 mb-2">Bet Amount</label>
-                <input id="betAmount" type="number" min="1" max={walletData?.balance?.tokenBalance ?? 1} placeholder="Enter bet amount"
-                    className="w-full p-3 rounded-lg border border-gray-500 bg-gray-800 text-white text-center text-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-600 disabled:opacity-70 appearance-none"
-                    value={betAmount} onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
-                    disabled={isBetting || isFlipping || !walletData} />
-             </div>
-             <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => handleGame('heads')} disabled={isBetting || isFlipping || !walletData || betAmount <= 0 || !nextServerSeedHash || hashLoading || nextServerSeedHash === 'Error'}
-                  className="p-4 bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-900 rounded-lg font-bold text-lg hover:from-yellow-300 hover:to-yellow-500 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:text-gray-400">
-                  HEADS
-                </button>
-                <button onClick={() => handleGame('tails')} disabled={isBetting || isFlipping || !walletData || betAmount <= 0 || !nextServerSeedHash || hashLoading || nextServerSeedHash === 'Error'}
-                  className="p-4 bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900 rounded-lg font-bold text-lg hover:from-gray-200 hover:to-gray-400 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:text-gray-400">
-                  TAILS
-                </button>
-              </div>
-          </div>
+      </div> {/* End Max Width Container */}
 
-          {/* Provably Fair Section */}
-          <details open className="bg-gray-800/60 rounded-lg p-4 text-xs border border-gray-600 group">
-             <summary className="font-semibold text-gray-300 cursor-pointer hover:text-white list-none flex justify-between items-center">
-                <span>Provably Fair Details</span>
-                <span className="text-gray-500 group-open:rotate-180 transition-transform duration-200">▼</span>
-             </summary>
-             <div className="mt-4 space-y-3 border-t border-gray-700 pt-3">
-                {/* Client Seed */}
-                <div className="space-y-2">
-                    <label htmlFor="clientSeedInput" className="block text-xs font-medium text-gray-400">Client Seed</label>
-                    <div className="flex items-center space-x-2">
-                        <input id="clientSeedInput" type="text" value={clientSeed} onChange={(e) => setClientSeed(e.target.value)}
-                            className="flex-grow p-2 rounded-lg border border-gray-600 bg-gray-900 text-gray-200 focus:ring-1 focus:ring-yellow-500 text-xs font-mono"
-                            placeholder="Enter or generate client seed" disabled={isBetting || isFlipping} />
-                        <button onClick={() => setClientSeed(crypto.randomBytes(16).toString('hex'))} className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50 flex-shrink-0" title="Generate New" disabled={isBetting || isFlipping}>
-                            <ArrowPathIcon className="h-4 w-4 text-gray-300" />
-                        </button>
-                        <button onClick={() => copyToClipboard(clientSeed)} className="p-2 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50 flex-shrink-0" title="Copy" disabled={isBetting || isFlipping}>
-                            <ClipboardDocumentIcon className="h-4 w-4 text-gray-300" />
-                        </button>
-                    </div>
-                </div>
-                {/* Last Game Verification */}
-                {gameResult && !isFlipping && (
-                  <div className="border-t border-gray-700 pt-3 space-y-2">
-                     <h4 className="font-semibold text-sm mb-1 text-gray-300">Last Bet Verification (Nonce: {gameResult.nonce})</h4>
-                     {renderVerificationDetail("Server Seed Hash", gameResult.serverSeedHash)}
-                     {renderVerificationDetail("Client Seed", gameResult.clientSeed)}
-                     {renderVerificationDetail("Nonce", gameResult.nonce?.toString())}
-                     {renderVerificationDetail("Server Seed", gameResult.serverSeed)}
-                     {renderVerificationDetail("Result Hash", gameResult.resultHash)}
-                     <p className="text-xs text-gray-500 mt-2">Verify result externally.</p>
-                  </div>
-                )}
-             </div>
-          </details>
-        </div>
-      </div>
-    </div>
+      {/* Render the Game Rules Modal */}
+      <GameRulesModal
+        isOpen={isRulesModalOpen}
+        onClose={() => setIsRulesModalOpen(false)}
+        currentBalance={walletData.balance.tokenBalance} // Pass current balance
+      />
+
+    </div> // End Page Container
   );
 }

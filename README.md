@@ -1,52 +1,88 @@
-# Make TON Telegram Mini App 1: Get user data from Telegram
+# Coinflip Telegram Bot
 
-Welcome to the first guide in the **Make TON Telegram Mini App** series! This project demonstrates how to create a simple Telegram Mini App using Next.js 14 that displays user data from Telegram.
+A simple Telegram bot that simulates coin flips, allowing users to play and track their results.
 
-## Project Overview
+## Features
 
-This Telegram Mini App showcases:
-- Setting up a Next.js 14 project for Telegram Mini Apps
-- Retrieving and displaying user data from Telegram
-- Basic TypeScript usage for type safety
-
-## Prerequisites
-
-- Node.js (version 14 or higher)
-- npm (comes with Node.js)
-- A Telegram account
+- Flip a virtual coin (Heads or Tails)
+- Track user statistics
+- View personal flip history
+- Simple and intuitive commands
 
 ## Getting Started
 
+### Prerequisites
+
+- Node.js (v14.0.0 or higher)
+- npm (v6.0.0 or higher)
+- Telegram Bot Token (obtainable from [BotFather](https://t.me/botfather))
+
+### Installation
+
 1. Clone the repository:
-```
-   git clone https://github.com/nikandr-surkov/Make-TON-Telegram-Mini-App-1.git
-   cd Make-TON-Telegram-Mini-App-1
-```
+   ```bash
+   git clone https://github.com/yourusername/coinflip-tel-bot.git
+   cd coinflip-tel-bot
+   ```
 
 2. Install dependencies:
-```
+   ```bash
    npm install
+   ```
+
+3. Create a `.env` file in the root directory and add your Telegram bot token:
+   ```
+   BOT_TOKEN=your_telegram_bot_token_here
+   ```
+
+4. Start the bot:
+   ```bash
+   npm start
+   ```
+
+## Usage
+
+Once the bot is running, you can interact with it on Telegram using the following commands:
+
+- `/start` - Initialize the bot
+- `/flip` - Flip a coin
+- `/stats` - View your statistics
+- `/history` - View your flip history
+- `/help` - Display available commands
+
+## Project Structure
+
+```
+coinflip-tel-bot/
+├── src/
+│   ├── bot.js        # Main bot logic
+│   ├── commands/     # Command handlers
+│   ├── database/     # Database operations
+│   └── utils/        # Utility functions
+├── .env              # Environment variables
+├── package.json      # Project dependencies
+└── README.md         # Project documentation
 ```
 
-3. Run the development server:
-```
-   npm run dev
-```
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to see the result.
+## Technologies Used
 
-## Building for Production
+- [Node.js](https://nodejs.org/) - JavaScript runtime
+- [Telegraf](https://github.com/telegraf/telegraf) - Telegram Bot Framework
+- [MongoDB](https://www.mongodb.com/) (or your database of choice) - For data storage
 
-1. Build the app:
-   npm run build
+## Contributing
 
-2. The static files will be generated in the `out` directory. You can deploy these files to any static hosting service.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## YouTube Channel
+## License
 
-For video tutorials and more in-depth explanations, check out my YouTube channel:
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-[Nikandr Surkov](https://www.youtube.com/@NikandrSurkov)
+## Acknowledgments
 
-## Next Steps
-
-Stay tuned for the next guide in the **Make TON Telegram Mini App** series, where we'll explore more advanced features and TON integration!
+- [Telegram Bot API](https://core.telegram.org/bots/api)
+- All contributors who have helped with the project

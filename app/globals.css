@@ -30,22 +30,22 @@ body {
 /* Coin Flip Animations */
 
 /* Continuous spin while waiting for API */
-@keyframes spin-continuous {
+/* @keyframes spin-continuous {
   from { transform: rotateY(0deg); }
   to { transform: rotateY(360deg); }
-}
+} */
 
 /* Final animation landing on Heads - same speed as continuous spin */
-@keyframes flip-to-heads {
+/* @keyframes flip-to-heads { */
   /* Maintains same rotation speed as continuous spin */
-  to { transform: rotateY(360deg); } /* Ends at 0deg (1 full spin) */
-}
+  /* to { transform: rotateY(360deg); } */ /* Ends at 0deg (1 full spin) */
+/* } */
 
 /* Final animation landing on Tails - same speed as continuous spin */
-@keyframes flip-to-tails {
+/* @keyframes flip-to-tails { */
   /* Maintains same rotation speed as continuous spin */
-  to { transform: rotateY(540deg); } /* Ends at 180deg (1.5 spins) */
-}
+  /* to { transform: rotateY(540deg); } */ /* Ends at 180deg (1.5 spins) */
+/* } */
 
 .coin-container {
   perspective: 1000px;
@@ -59,21 +59,21 @@ body {
 }
 
 /* Classes to trigger animations */
-.animate-spin-continuous {
-  animation: spin-continuous 1s linear infinite; /* Continuous spin */
-}
+/* .animate-spin-continuous {
+  animation: spin-continuous 1s linear infinite; */ /* Continuous spin */
+/* } */
 
-.animate-spin-initial {
-  animation: spin-continuous 1s linear infinite; /* Initial spin animation (same as continuous) */
-}
+/* .animate-spin-initial {
+  animation: spin-continuous 1s linear infinite; */ /* Initial spin animation (same as continuous) */
+/* } */
 
-.animate-flip-heads {
-  animation: flip-to-heads 1s linear forwards; /* Same speed as continuous spin */
-}
+/* .animate-flip-heads {
+  animation: flip-to-heads 1s linear forwards; */ /* Same speed as continuous spin */
+/* } */
 
-.animate-flip-tails {
-  animation: flip-to-tails 1s linear forwards; /* Same speed as continuous spin */
-}
+/* .animate-flip-tails {
+  animation: flip-to-tails 1s linear forwards; */ /* Same speed as continuous spin */
+/* } */
 
 
 .coin-face {

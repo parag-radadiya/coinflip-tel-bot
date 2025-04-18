@@ -72,6 +72,7 @@ export default function Home() {
             <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl shadow-lg p-6 space-y-4 border border-gray-600">
               <h1 className="text-2xl font-bold text-white mb-4">👤 Profile Details</h1>
               <div className="space-y-3">
+
                 <p className="flex justify-between">
                   <span className="font-medium text-gray-300">First Name:</span>
                   <span className="text-white">{userData.first_name}</span>
